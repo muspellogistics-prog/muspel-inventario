@@ -204,7 +204,9 @@ function armarFiltros(){
   }
   llenar('f-comuna','comuna','Todas las comunas'); llenar('f-b2b','b2b','Todas las marcas');
 }
-['q','f-estado','f-ver','f-comuna','f-b2b'].forEach(function(id){ $(id).addEventListener('input',function(){ pintarLista(); }); });
+var pag=0, TOPE=50;
+['q','f-estado','f-ver','f-comuna','f-b2b'].forEach(function(id){ $(id).addEventListener('input',function(){ pag=0; pintarLista(); }); });
+function irPag(n){ pag=n; pintarLista(); window.scrollTo(0,0); }
 function pintarLista(){
   var q=norm($('q').value), fe=$('f-estado').value, fv=$('f-ver').value, fc=$('f-comuna').value, fb=$('f-b2b').value;
   var r=filas.filter(function(f){
@@ -213,9 +215,14 @@ function pintarLista(){
     if(q && (norm(f.nombre)+' '+norm(f.folio)+' '+norm(f.direccion)+' '+norm(f.qr)).indexOf(q)<0) return false;
     return true;
   });
-  var tope=100;
-  $('lista').innerHTML = '<div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+r.length+' bultos'+(r.length>tope?' (mostrando '+tope+')':'')+'</div>'+
-    r.slice(0,tope).map(function(f){ return tarjeta(f); }).join('');
+  var paginas=Math.max(1,Math.ceil(r.length/TOPE)); if(pag>=paginas) pag=paginas-1; if(pag<0) pag=0;
+  var ini=pag*TOPE, fin=Math.min(r.length,ini+TOPE);
+  var nav = paginas>1 ? '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;">'+
+    '<button class="btn" '+(pag===0?'disabled':'')+' onclick="irPag('+(pag-1)+')">← Anterior</button>'+
+    '<span style="font-size:.82rem;color:#64748b;">Página '+(pag+1)+' de '+paginas+'</span>'+
+    '<button class="btn" '+(pag>=paginas-1?'disabled':'')+' onclick="irPag('+(pag+1)+')">Siguiente →</button></div>' : '';
+  $('lista').innerHTML = '<div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+r.length+' bultos'+(r.length?' · mostrando '+(ini+1)+' a '+fin:'')+'</div>'+nav+
+    r.slice(ini,fin).map(function(f){ return tarjeta(f); }).join('')+nav;
   document.querySelectorAll('#lista .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
 }
 function tarjeta(f){
