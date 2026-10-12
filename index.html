@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>MUSPEL · INVENTARIO</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{--azul:#1a3a5c;--azul2:#2563a8;--verde:#1a7a4a;--rojo:#b91c1c;--naranja:#c2410c;--gris:#f4f6fa;--borde:#dde3ed;--texto:#1e293b;--blanco:#fff;--sombra:0 2px 8px rgba(26,58,92,.10);}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--gris);color:var(--texto);min-height:100vh;}
+  .header{background:var(--azul);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .logo{font-size:1.15rem;font-weight:800;letter-spacing:2px;}
+  .logo span{color:#7ec8f4;font-weight:400;font-size:.85rem;margin-left:6px;}
+  .quien{font-size:.72rem;color:#a8c4e0;}
+  .tabs{display:flex;background:var(--azul);position:sticky;top:50px;z-index:99;border-top:1px solid rgba(255,255,255,.1);}
+  .tab{flex:1;padding:10px 4px 8px;text-align:center;font-size:.72rem;font-weight:600;color:rgba(255,255,255,.55);cursor:pointer;border-bottom:3px solid transparent;}
+  .tab.on{color:#fff;border-bottom-color:#7ec8f4;}
+  .wrap{padding:12px;max-width:760px;margin:0 auto;}
+  .card{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:12px;margin-bottom:10px;box-shadow:var(--sombra);}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;}
+  .kpi{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:12px;text-align:center;}
+  .kpi b{display:block;font-size:1.6rem;color:var(--azul);}
+  .kpi small{font-size:.72rem;color:#64748b;}
+  .kpi.verde b{color:var(--verde);} .kpi.naranja b{color:var(--naranja);} .kpi.rojo b{color:var(--rojo);}
+  h3{font-size:.95rem;margin:4px 0 8px;color:var(--azul);}
+  .btn{background:var(--azul2);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:.9rem;font-weight:600;cursor:pointer;}
+  .btn.sec{background:#e8eef7;color:var(--azul);} .btn.verde{background:var(--verde);} .btn.rojo{background:var(--rojo);} .btn.nar{background:var(--naranja);}
+  .btn.chico{padding:7px 10px;font-size:.78rem;}
+  .fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  input,select,textarea{width:100%;padding:10px;border:1px solid var(--borde);border-radius:10px;font-size:.95rem;background:#fff;}
+  .b{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;margin-right:4px;}
+  .b.bod{background:#e0ecff;color:#1d4ed8;} .b.rut{background:#fff1d6;color:#b45309;} .b.ent{background:#d9f5e5;color:#166534;} .b.dev{background:#fee2e2;color:#b91c1c;}
+  .b.ver{background:#d9f5e5;color:#166534;} .b.nover{background:#f1f5f9;color:#64748b;}
+  .it{cursor:pointer;} .it .n{font-weight:700;} .it .d{font-size:.8rem;color:#475569;margin-top:2px;} .it .m{font-size:.72rem;color:#64748b;margin-top:4px;}
+  #lector{width:100%;max-width:420px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000;min-height:40px;}
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:flex-end;justify-content:center;z-index:300;}
+  .modal.on{display:flex;}
+  .hoja{background:#fff;width:100%;max-width:760px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px;}
+  .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:12px;font-size:.85rem;z-index:400;display:none;max-width:90%;}
+  .aviso{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:10px;font-size:.82rem;margin-bottom:10px;}
+  .oculto{display:none;}
+  .barra{height:10px;background:#e5eaf2;border-radius:6px;overflow:hidden;margin:6px 0 2px;} .barra i{display:block;height:100%;background:var(--verde);}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;} td,th{padding:6px 4px;border-bottom:1px solid var(--borde);text-align:left;} td.n,th.n{text-align:right;}
+</style>
+</head>
+<body>
+
+<div class="header"><div class="logo">MUSPEL<span>INVENTARIO</span></div><div class="quien" id="quien"></div></div>
+<div class="tabs" id="tabs">
+  <div class="tab on" data-t="resumen">Resumen</div>
+  <div class="tab" data-t="escanear">Escanear</div>
+  <div class="tab" data-t="lista">Lista</div>
+  <div class="tab" data-t="faltan">Faltan</div>
+</div>
+
+<div class="wrap">
+  <div id="msg"></div>
+
+  <!-- RESUMEN -->
+  <div id="t-resumen">
+    <div class="kpis" id="kpis"></div>
+    <div class="card"><h3>Avance de verificación</h3><div id="avance"></div></div>
+    <div class="card"><div class="fila"><button class="btn sec" id="btn-sync">Sincronizar con la OPS</button><button class="btn sec" id="btn-recargar">Recargar</button></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin-top:8px;"></div></div>
+    <div class="card"><h3>Por entregar, por comuna</h3><div id="por-comuna"></div></div>
+    <div class="card"><h3>Por entregar, por marca</h3><div id="por-marca"></div></div>
+  </div>
+
+  <!-- ESCANEAR -->
+  <div id="t-escanear" class="oculto">
+    <div class="card">
+      <div class="fila" style="margin-bottom:8px;"><button class="btn" id="btn-cam">Abrir cámara</button><button class="btn sec" id="btn-cam-stop">Cerrar cámara</button></div>
+      <div id="lector"></div>
+      <div style="margin-top:10px;" class="fila">
+        <input id="manual" placeholder="O escribe el folio / código" style="flex:1;">
+        <button class="btn sec" id="btn-manual">Buscar</button>
+      </div>
+      <div id="scan-res" style="margin-top:10px;"></div>
+    </div>
+    <div class="card"><label style="font-size:.8rem;color:#64748b;">Ubicación actual (se anota en cada paquete que verifiques, opcional)</label><input id="ubic" placeholder="Ej: Estante 3"></div>
+  </div>
+
+  <!-- LISTA -->
+  <div id="t-lista" class="oculto">
+    <div class="card">
+      <input id="q" placeholder="Buscar nombre, folio, dirección…" style="margin-bottom:8px;">
+      <div class="fila">
+        <select id="f-estado" style="flex:1;"><option value="">Todos los estados</option><option>En bodega</option><option>En ruta</option><option>Entregado</option><option>Devuelto</option></select>
+        <select id="f-ver" style="flex:1;"><option value="">Verificados y no</option><option value="si">Solo verificados</option><option value="no">Solo sin verificar</option></select>
+      </div>
+      <div class="fila" style="margin-top:8px;"><select id="f-comuna" style="flex:1;"><option value="">Todas las comunas</option></select><select id="f-b2b" style="flex:1;"><option value="">Todas las marcas</option></select></div>
+    </div>
+    <div id="lista"></div>
+  </div>
+
+  <!-- FALTAN -->
+  <div id="t-faltan" class="oculto"><div id="faltan"></div></div>
+</div>
+
+<div class="modal" id="modal"><div class="hoja" id="hoja"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== Configuración =====
+var INV_URL = 'https://script.google.com/macros/s/AKfycbykCAxXOCy2oFPHsNVsXgN4kTzlax5iWCNK4sLSkpeYLD8_SltLDAbkEV4Q6lcT1u3LUw/exec';   // la URL del Apps Script nuevo (la pone Claude/Kathy)
+var OPS_URL = 'https://script.google.com/macros/s/AKfycbx6aAlb99tMoR2leEQep0V7k3fBFh2JxvpjWXdwKuY1n4NUptpO6stNSc4gFU0xEalG/exec';
+var ESTADOS = ['En bodega','En ruta','Entregado','Devuelto'];
+
+// ===== Clave de acceso (link personal ?k=CLAVE, se guarda en este celular) =====
+(function(){
+  try{
+    var m = location.search.match(/[?&]k=([^&]+)/);
+    if(m){ localStorage.setItem('inv_clave', decodeURIComponent(m[1])); history.replaceState(null,'',location.pathname); }
+  }catch(e){}
+})();
+function clave(){ try{ return localStorage.getItem('inv_clave')||''; }catch(e){ return ''; } }
+function claveOps(){ try{ return localStorage.getItem('muspel_clave')||''; }catch(e){ return ''; } }
+
+var filas = [];          // todas las filas del inventario
+var porId = {};
+var camara = null, ultimoCodigo = '', ultimoT = 0;
+var $ = function(id){ return document.getElementById(id); };
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function norm(s){ return String(s==null?'':s).trim().toUpperCase(); }
+function hoy(){ var d=new Date(); function z(n){return (n<10?'0':'')+n;} return z(d.getDate())+'-'+z(d.getMonth()+1)+'-'+d.getFullYear()+' '+z(d.getHours())+':'+z(d.getMinutes()); }
+function toast(t){ var e=$('toast'); e.textContent=t; e.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(function(){e.style.display='none';},2600); }
+
+// ===== Comunicación con el script =====
+function llamar(cuerpo){
+  if(INV_URL.indexOf('PEGAR_AQUI')===0) return Promise.reject(new Error('Falta configurar la URL del script'));
+  cuerpo.clave = clave();
+  return fetch(INV_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(cuerpo)}).then(function(r){return r.json();});
+}
+function cargar(){
+  if(!clave()){ $('msg').innerHTML='<div class="aviso">Abre esta página con tu link personal (el que termina en <b>?k=…</b>).</div>'; return Promise.resolve(); }
+  if(INV_URL.indexOf('PEGAR_AQUI')===0){ $('msg').innerHTML='<div class="aviso">Falta conectar la página con la planilla de inventario.</div>'; return Promise.resolve(); }
+  return fetch(INV_URL+'?accion=listar&clave='+encodeURIComponent(clave())).then(function(r){return r.json();}).then(function(j){
+    if(j.status==='denegado'){ $('msg').innerHTML='<div class="aviso">Clave no válida o desactivada.</div>'; return; }
+    $('msg').innerHTML='';
+    filas = j.filas||[]; reindexar(); armarFiltros(); pintar();
+  }).catch(function(e){ $('msg').innerHTML='<div class="aviso">No pude cargar el inventario. Revisa tu internet e intenta de nuevo.</div>'; });
+}
+function reindexar(){ porId={}; filas.forEach(function(f){ porId[f.id]=f; }); }
+function guardar(cambios){
+  // cambios: [{id, campo:valor...}] -> se aplica local y se envía
+  cambios.forEach(function(c){ var f=porId[c.id]; if(f) for(var k in c) f[k]=c[k]; });
+  pintar();
+  return llamar({accion:'guardar',filas:cambios}).then(function(j){
+    if(j.status!=='ok') toast('No se pudo guardar. Intenta de nuevo.');
+  }).catch(function(){ toast('Sin conexión: no se guardó. Recarga y repite.'); });
+}
+
+// ===== Pestañas =====
+document.querySelectorAll('.tab').forEach(function(t){
+  t.onclick=function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');}); t.classList.add('on');
+    ['resumen','escanear','lista','faltan'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
+    if(t.dataset.t!=='escanear') detener();
+    pintar();
+  };
+});
+
+// ===== Utilidades de estado =====
+function claseEstado(e){ return e==='Entregado'?'ent':e==='En ruta'?'rut':e==='Devuelto'?'dev':'bod'; }
+function badges(f){
+  return '<span class="b '+claseEstado(f.estado)+'">'+esc(f.estado||'En bodega')+'</span>'+
+         (f.verificado==='si'?'<span class="b ver">Verificado</span>':'<span class="b nover">Sin verificar</span>');
+}
+function pendiente(f){ return f.estado==='En bodega' || f.estado==='En ruta'; }
+
+// ===== Resumen =====
+function contar(fn){ return filas.filter(fn).length; }
+function pintar(){
+  var tot=filas.length, bod=contar(function(f){return f.estado==='En bodega';}), rut=contar(function(f){return f.estado==='En ruta';}), ent=contar(function(f){return f.estado==='Entregado';}), dev=contar(function(f){return f.estado==='Devuelto';});
+  var pend=bod+rut, ver=contar(function(f){return pendiente(f)&&f.verificado==='si';});
+  $('kpis').innerHTML =
+    '<div class="kpi naranja"><b>'+pend+'</b><small>Por entregar (bultos)</small></div>'+
+    '<div class="kpi verde"><b>'+ent+'</b><small>Entregados</small></div>'+
+    '<div class="kpi"><b>'+bod+'</b><small>En bodega</small></div>'+
+    '<div class="kpi"><b>'+rut+'</b><small>En ruta</small></div>'+
+    '<div class="kpi rojo"><b>'+dev+'</b><small>Devueltos</small></div>'+
+    '<div class="kpi"><b>'+tot+'</b><small>Total de bultos</small></div>';
+  var pct = pend? Math.round(ver*100/pend):0;
+  $('avance').innerHTML = '<div style="font-size:.85rem;">'+ver+' de '+pend+' bultos por entregar ya están verificados en físico ('+pct+'%)</div><div class="barra"><i style="width:'+pct+'%"></i></div>';
+  $('por-comuna').innerHTML = tabla(agrupar('comuna'));
+  $('por-marca').innerHTML = tabla(agrupar('b2b'));
+  if(!$('t-lista').classList.contains('oculto')) pintarLista();
+  if(!$('t-faltan').classList.contains('oculto')) pintarFaltan();
+}
+function agrupar(campo){
+  var g={}; filas.filter(pendiente).forEach(function(f){ var k=(f[campo]||'(sin dato)').trim(); g[k]=g[k]||{n:0,v:0}; g[k].n++; if(f.verificado==='si') g[k].v++; });
+  return Object.keys(g).map(function(k){return [k,g[k].n,g[k].v];}).sort(function(a,b){return b[1]-a[1];});
+}
+function tabla(a){
+  if(!a.length) return '<div style="font-size:.85rem;color:#64748b;">Sin pendientes</div>';
+  return '<table><tr><th></th><th class="n">Bultos</th><th class="n">Verif.</th></tr>'+a.map(function(r){return '<tr><td>'+esc(r[0])+'</td><td class="n">'+r[1]+'</td><td class="n">'+r[2]+'</td></tr>';}).join('')+'</table>';
+}
+
+// ===== Lista =====
+function armarFiltros(){
+  function llenar(id, campo, vacio){
+    var s=$(id), actual=s.value, set={}; filas.forEach(function(f){ var v=(f[campo]||'').trim(); if(v) set[v]=1; });
+    s.innerHTML='<option value="">'+vacio+'</option>'+Object.keys(set).sort().map(function(v){return '<option>'+esc(v)+'</option>';}).join(''); s.value=actual;
+  }
+  llenar('f-comuna','comuna','Todas las comunas'); llenar('f-b2b','b2b','Todas las marcas');
+}
+['q','f-estado','f-ver','f-comuna','f-b2b'].forEach(function(id){ $(id).addEventListener('input',function(){ pintarLista(); }); });
+function pintarLista(){
+  var q=norm($('q').value), fe=$('f-estado').value, fv=$('f-ver').value, fc=$('f-comuna').value, fb=$('f-b2b').value;
+  var r=filas.filter(function(f){
+    if(fe && f.estado!==fe) return false; if(fv && f.verificado!==fv) return false;
+    if(fc && (f.comuna||'').trim()!==fc) return false; if(fb && (f.b2b||'').trim()!==fb) return false;
+    if(q && (norm(f.nombre)+' '+norm(f.folio)+' '+norm(f.direccion)+' '+norm(f.qr)).indexOf(q)<0) return false;
+    return true;
+  });
+  var tope=100;
+  $('lista').innerHTML = '<div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+r.length+' bultos'+(r.length>tope?' (mostrando '+tope+')':'')+'</div>'+
+    r.slice(0,tope).map(function(f){ return tarjeta(f); }).join('');
+  document.querySelectorAll('#lista .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
+}
+function tarjeta(f){
+  return '<div class="card it" data-id="'+esc(f.id)+'"><div class="n">'+esc(f.nombre)+' <span style="font-weight:400;color:#64748b;">· '+esc(f.bulto)+'</span></div>'+
+    '<div class="d">'+esc(f.direccion)+'</div><div class="m">'+esc(f.b2b)+' · '+esc(f.folio)+' · '+esc((f.comuna||'').trim())+(f.ubicacion?' · '+esc(f.ubicacion):'')+'</div><div style="margin-top:6px;">'+badges(f)+'</div></div>';
+}
+
+// ===== Ficha de un bulto =====
+function abrirModal(html){ $('hoja').innerHTML=html; $('modal').classList.add('on'); }
+function cerrarModal(){ $('modal').classList.remove('on'); }
+$('modal').onclick=function(e){ if(e.target===$('modal')) cerrarModal(); };
+function abrirFicha(id){
+  var f=porId[id]; if(!f) return;
+  var otros=filas.filter(function(x){return x.folio===f.folio && x.id!==f.id;});
+  abrirModal('<h3>'+esc(f.nombre)+'</h3><div class="d" style="font-size:.85rem;">'+esc(f.direccion)+'<br>'+esc((f.comuna||'').trim())+' · Tel. '+esc(f.telefono)+'</div>'+
+    '<div style="font-size:.8rem;color:#64748b;margin:6px 0;">'+esc(f.b2b)+' · Folio '+esc(f.folio)+' · Bulto '+esc(f.bulto)+(f.qr?' · QR '+esc(f.qr):' · sin QR vinculado')+'</div>'+
+    (otros.length?'<div style="font-size:.8rem;margin-bottom:6px;">Otros bultos de esta orden: '+otros.map(function(o){return esc(o.bulto)+' ('+(o.verificado==='si'?'verificado':'sin verificar')+')';}).join(', ')+'</div>':'')+
+    '<div style="margin:8px 0;">'+badges(f)+'</div>'+
+    '<label style="font-size:.8rem;color:#64748b;">Estado</label><select id="m-estado">'+ESTADOS.map(function(e){return '<option'+(e===f.estado?' selected':'')+'>'+e+'</option>';}).join('')+'</select>'+
+    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Ubicación</label><input id="m-ubic" value="'+esc(f.ubicacion)+'">'+
+    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Nota</label><input id="m-nota" value="'+esc(f.nota)+'">'+
+    '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="m-ok">Guardar</button>'+
+    (f.verificado==='si'?'<button class="btn sec" id="m-nover">Quitar verificado</button>':'<button class="btn" id="m-ver">Marcar verificado</button>')+
+    '<button class="btn sec" id="m-x">Cerrar</button></div>');
+  function base(){ return {id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; }
+  $('m-ok').onclick=function(){ guardar([base()]); cerrarModal(); toast('Guardado'); };
+  if($('m-ver')) $('m-ver').onclick=function(){ var c=base(); c.verificado='si'; c.fechaVerif=hoy(); guardar([c]); cerrarModal(); toast('Verificado'); };
+  if($('m-nover')) $('m-nover').onclick=function(){ var c=base(); c.verificado='no'; c.fechaVerif=''; guardar([c]); cerrarModal(); };
+  $('m-x').onclick=cerrarModal;
+}
+
+// ===== Escanear =====
+function ubicActual(){ return $('ubic').value.trim(); }
+function verificar(f){
+  var c={id:f.id, verificado:'si', fechaVerif:hoy()}; if(ubicActual()) c.ubicacion=ubicActual();
+  guardar([c]);
+}
+function resultado(f, msg){
+  var otros=filas.filter(function(x){return x.folio===f.folio;});
+  var ver=otros.filter(function(x){return x.verificado==='si';}).length;
+  $('scan-res').innerHTML='<div class="card" style="border-color:#86efac;"><div style="font-weight:700;">'+esc(msg)+'</div>'+
+    '<div class="n" style="margin-top:6px;">'+esc(f.nombre)+' · '+esc(f.bulto)+'</div><div class="d" style="font-size:.82rem;">'+esc(f.direccion)+'</div>'+
+    '<div class="m" style="font-size:.74rem;color:#64748b;">'+esc(f.b2b)+' · '+esc(f.folio)+'</div>'+
+    (otros.length>1?'<div style="font-size:.8rem;margin-top:6px;color:#b45309;">Esta orden tiene '+otros.length+' bultos: '+ver+' verificados</div>':'')+
+    '<div style="margin-top:6px;">'+badges(f)+'</div></div>';
+}
+function procesarCodigo(cod){
+  cod=String(cod||'').trim(); if(!cod) return;
+  var n=norm(cod);
+  var f=filas.filter(function(x){return x.qr && norm(x.qr)===n;})[0];
+  if(f){ if(f.verificado!=='si'){ verificar(f); toast('Verificado'); resultado(porId[f.id],'Verificado'); } else { resultado(f,'Ya estaba verificado'); } return; }
+  var porFolio=filas.filter(function(x){return norm(x.folio)===n;});
+  if(porFolio.length===1){ var p=porFolio[0]; var c={id:p.id,verificado:'si',fechaVerif:hoy()}; if(ubicActual()) c.ubicacion=ubicActual(); guardar([c]); resultado(porId[p.id],'Verificado por folio'); return; }
+  if(porFolio.length>1){ elegir(cod, porFolio, false); return; }
+  elegir(cod, filas.filter(function(x){return !x.qr && pendiente(x);}), true);
+}
+function elegir(cod, lista, vincular){
+  abrirModal('<h3>'+(vincular?'Código nuevo: ¿qué paquete es?':'Esta orden tiene varios bultos: ¿cuál es?')+'</h3>'+
+    (vincular?'<div style="font-size:.78rem;color:#64748b;margin-bottom:8px;word-break:break-all;">'+esc(cod)+'<br>Se vincula una sola vez; la próxima vez que lo escanees se reconoce solo.</div>':'')+
+    '<input id="e-q" placeholder="Buscar nombre, folio o dirección…"><div id="e-lista" style="margin-top:8px;"></div><div class="fila" style="margin-top:8px;"><button class="btn sec" id="e-x">Cancelar</button></div>');
+  function pinta(){
+    var q=norm($('e-q').value);
+    var r=lista.filter(function(f){ return !q || (norm(f.nombre)+' '+norm(f.folio)+' '+norm(f.direccion)).indexOf(q)>=0; }).slice(0,40);
+    $('e-lista').innerHTML=r.map(function(f){return tarjeta(f);}).join('')||'<div style="font-size:.85rem;color:#64748b;">Sin resultados</div>';
+    document.querySelectorAll('#e-lista .it').forEach(function(e){ e.onclick=function(){
+      var f=porId[e.dataset.id]; var c={id:f.id,verificado:'si',fechaVerif:hoy()}; if(vincular) c.qr=cod; if(ubicActual()) c.ubicacion=ubicActual();
+      guardar([c]); cerrarModal(); resultado(porId[f.id], vincular?'Vinculado y verificado':'Verificado');
+    }; });
+  }
+  $('e-q').addEventListener('input',pinta); $('e-x').onclick=cerrarModal; pinta();
+}
+$('btn-manual').onclick=function(){ procesarCodigo($('manual').value); $('manual').value=''; };
+$('manual').addEventListener('keydown',function(e){ if(e.key==='Enter'){ $('btn-manual').click(); } });
+$('btn-cam').onclick=function(){
+  if(camara) return;
+  if(typeof Html5Qrcode==='undefined'){ toast('No se pudo cargar el lector. Revisa tu internet.'); return; }
+  camara=new Html5Qrcode('lector');
+  camara.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:240}},function(txt){
+    var t=Date.now(); if(txt===ultimoCodigo && t-ultimoT<3000) return; ultimoCodigo=txt; ultimoT=t;
+    if($('modal').classList.contains('on')) return;
+    procesarCodigo(txt);
+  },function(){}).catch(function(){ camara=null; toast('No pude abrir la cámara. Da permiso a la página.'); });
+};
+function detener(){ if(camara){ var c=camara; camara=null; c.stop().then(function(){ c.clear(); }).catch(function(){}); } }
+$('btn-cam-stop').onclick=detener;
+
+// ===== Faltan (multibultos incompletos) =====
+function bparse(b){ var m=String(b||'').match(/(\d+)\s*(?:de|\/)\s*(\d+)/); return m?[parseInt(m[1],10),parseInt(m[2],10)]:[1,1]; }
+function pintarFaltan(){
+  var g={}; filas.filter(pendiente).forEach(function(f){ (g[f.folio]=g[f.folio]||[]).push(f); });
+  var out=[];
+  Object.keys(g).forEach(function(folio){
+    var a=g[folio]; var total=bparse(a[0].bulto)[1];
+    var cargados=a.map(function(x){return bparse(x.bulto)[0];});
+    var faltanCarga=[]; for(var i=1;i<=total;i++){ if(cargados.indexOf(i)<0) faltanCarga.push(i+' de '+total); }
+    var sinVer=a.filter(function(x){return x.verificado!=='si';}).map(function(x){return x.bulto;});
+    var algunoVer=a.some(function(x){return x.verificado==='si';});
+    if(total>1 && (faltanCarga.length || (algunoVer && sinVer.length))) out.push({a:a,faltanCarga:faltanCarga,sinVer:sinVer});
+  });
+  $('faltan').innerHTML = out.length ? out.map(function(o){ var f=o.a[0];
+    return '<div class="card it" data-id="'+esc(f.id)+'"><div class="n">'+esc(f.nombre)+'</div><div class="d">'+esc(f.direccion)+'</div><div class="m">'+esc(f.b2b)+' · '+esc(f.folio)+'</div>'+
+      (o.faltanCarga.length?'<div style="font-size:.82rem;color:#b91c1c;margin-top:6px;">Bultos que nunca entraron al registro: '+o.faltanCarga.join(', ')+'</div>':'')+
+      (o.sinVer.length?'<div style="font-size:.82rem;color:#b45309;margin-top:4px;">Registrados pero sin ver en físico: '+o.sinVer.join(', ')+'</div>':'')+'</div>'; }).join('')
+    : '<div class="card">No hay órdenes con bultos faltantes.</div>';
+  document.querySelectorAll('#faltan .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
+}
+
+// ===== Sincronizar con la OPS =====
+$('btn-recargar').onclick=function(){ cargar().then(function(){ toast('Recargado'); }); };
+$('btn-sync').onclick=function(){
+  var ck=claveOps(); var out=$('sync-res'); out.textContent='Consultando la OPS…';
+  if(!ck){ out.textContent='Primero abre la OPS una vez en este celular, con tu link, para que reconozca tu clave.'; return; }
+  fetch(OPS_URL+'?tipo=ordenes&clave='+encodeURIComponent(ck)).then(function(r){return r.json();}).then(function(j){
+    var rows=Array.isArray(j)?j:(j.ordenes||j.data||j.filas||[]);
+    var porFolio={}, porCod={};
+    rows.slice(1).forEach(function(r){ if(!r||!r[1]) return; var e=String(r[11]||'').toLowerCase(); var o={estado:e}; porCod[norm(r[1])]=o; if(r[2]) porFolio[norm(r[2])]=o; });
+    var cambios=[], ent=0, dev=0;
+    filas.forEach(function(f){
+      if(!pendiente(f)) return;
+      var o=porFolio[norm(f.folio)] || (f.qr && porCod[norm(f.qr)]) || porCod[norm(f.folio)];
+      if(!o) return;
+      if(o.estado==='entregado'){ cambios.push({id:f.id,estado:'Entregado'}); ent++; }
+      else if(o.estado==='devuelto'){ cambios.push({id:f.id,estado:'Devuelto'}); dev++; }
+    });
+    if(!cambios.length){ out.textContent='Sin novedades: nada nuevo entregado en la OPS.'; return; }
+    guardar(cambios).then(function(){ out.textContent='Listo: '+ent+' bultos pasaron a Entregado y '+dev+' a Devuelto.'; });
+  }).catch(function(){ out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
+};
+
+cargar();
+</script>
+</body>
+</html>
