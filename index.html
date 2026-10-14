@@ -213,6 +213,7 @@ function reagDe(f){ var m=/REAG:(\d{4}-\d{2}-\d{2})(?::([^|]*))?/.exec(f.nota||'
 function fechaTxt(iso){ var p=String(iso).split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):iso; }
 function notaSinReag(n){ return String(n||'').split('|').map(function(x){return x.trim();}).filter(function(x){return x && x.indexOf('REAG:')!==0;}).join(' | '); }
 function notaConReag(n,iso,motivo){ var b=notaSinReag(n), t='REAG:'+iso+(motivo?':'+String(motivo).replace(/[|:]/g,' ').replace(/\s+/g,' ').trim():''); return b?(b+' | '+t):t; }
+function notaConRuta(n,txt){ var r=String(n||'').split('|').map(function(x){return x.trim();}).filter(function(x){return x && x.indexOf('Ruta ')!==0;}); return [txt].concat(r).join(' | '); }
 function isoHoy(){ var d=new Date(); function z(n){return (n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
 function bultosDe(folio){ return filas.filter(function(x){return x.folio===folio;}); }
 function reagTag(f){ var r=reagDe(f); if(!r||!pendiente(f)) return ''; return '<div class="pq-reag">📅 REAGENDADO · '+esc(fechaTxt(r.fecha))+'</div>'+(r.motivo?'<div style="font-size:.72rem;color:#6b21a8;">'+esc(r.motivo)+'</div>':''); }
@@ -623,7 +624,8 @@ function sincOps(auto){
   var q=ck?('&clave='+encodeURIComponent(ck)):'';
   Promise.all([
     fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).catch(function(){return null;}),
-    fetch(OPS_URL+'?tipo=detalle_historico'+q).then(function(r){return r.json();}).catch(function(){return null;})
+    fetch(OPS_URL+'?tipo=detalle_historico'+q).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(OPS_URL+'?tipo=asignaciones'+q).then(function(r){return r.json();}).catch(function(){return null;})
   ]).then(function(res){
     if(!res[0] && !res[1]){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; return; }
     var mapa={};
@@ -637,7 +639,13 @@ function sincOps(auto){
     arr(res[1]).slice(1).forEach(function(r){ if(!r) return; poner([r[2],r[1]], String(r[7]||'').toLowerCase().trim(), String(r[0]||'').slice(0,10), parseInt(r[17],10)||0); });
     var hoyD=hoy().slice(0,10);
     arr(res[0]).slice(1).forEach(function(r){ if(!r) return; poner([r[2],r[1]], String(r[11]||'').toLowerCase().trim(), hoyD+'~', parseInt(r[14],10)||0); });
-    var cambios=[], c={ent:0,dev:0,ruta:0,vuelta:0,sin:0}; opsInfo={};
+    // Quién se llevó cada orden: la OPS guarda la asignación Luchín / Cristian por código
+    var asg={}; ((res[2]&&res[2].asignaciones)||[]).forEach(function(a){ if(!a||!a.codigo) return; var p=asg[a.codigo]; if(!p||(a.ts||0)>=(p.ts||0)) asg[a.codigo]=a; });
+    var NOMOP={op2:'Luchín',cristian:'Cristian'}, opHoy={};
+    arr(res[0]).slice(1).forEach(function(r){ if(!r) return; var a=asg[r[1]]; var nm=a&&NOMOP[a.repartidor]; if(!nm) return; var e=String(r[11]||'').toLowerCase().trim(); if(e!=='pendiente' && e!=='entregado') return;
+      var inf={op:nm,par:parseInt(r[17],10)||0}; [r[2],r[1]].forEach(function(k){ k=norm(k); if(k) opHoy[k]=inf; }); });
+    function txtRuta(inf){ return 'Ruta '+hoyD+' · '+inf.op+(inf.par?' · parada '+inf.par:''); }
+    var cambios=[], c={ent:0,dev:0,ruta:0,vuelta:0,sin:0,op:0}; opsInfo={};
     filas.forEach(function(f){
       var o=mapa[norm(f.folio)] || (f.qr && mapa[norm(f.qr)]);
       if(!o){ if(pendiente(f)) c.sin++; return; }
@@ -647,6 +655,13 @@ function sincOps(auto){
       else if(o.estado==='devuelto'){ cambios.push({id:f.id,estado:'Devuelto'}); c.dev++; }
       else if(o.estado==='pendiente' && f.estado==='En bodega'){ cambios.push({id:f.id,estado:'En ruta'}); c.ruta++; }
       else if(o.estado==='retorno' && f.estado==='En ruta' && (f.nota||'').indexOf('Ruta '+hoyD)!==0){ cambios.push({id:f.id,estado:'En bodega'}); c.vuelta++; }
+    });
+    var idxC={}; cambios.forEach(function(x){ idxC[x.id]=x; });
+    filas.forEach(function(f){
+      var inf=opHoy[norm(f.folio)] || (f.qr && opHoy[norm(f.qr)]); if(!inf) return;
+      var c0=idxC[f.id], est=(c0&&c0.estado)||f.estado; if(est!=='En ruta' && est!=='Entregado') return;
+      var base=(c0&&c0.nota!==undefined)?c0.nota:f.nota, nuevo=notaConRuta(base,txtRuta(inf)); if(nuevo===(base||'')) return;
+      if(c0) c0.nota=nuevo; else { c0={id:f.id,nota:nuevo}; cambios.push(c0); idxC[f.id]=c0; } c.op++;
     });
     // Órdenes que están en la OPS y todavía no existen en el inventario: se registran solas
     var existe={}; filas.forEach(function(f){ existe[norm(f.folio)]=1; if(f.qr) existe[norm(f.qr)]=1; });
@@ -659,12 +674,12 @@ function sincOps(auto){
       var g=gOps[fo]; g.forEach(function(r,i){
         var e=String(r[11]||'').toLowerCase().trim(), est=e==='entregado'?'Entregado':e==='devuelto'?'Devuelto':e==='retorno'?'En bodega':'En ruta';
         var bul=(i+1)+' de '+g.length;
-        cambios.push({id:fo+'|'+bul, folio:fo, b2b:String(r[10]||''), nombre:String(r[4]||''), telefono:String(r[5]||''), direccion:String(r[6]||''), comuna:String(r[7]||''), bulto:bul, qr:'', estado:est, verificado:'no', nota:'Registrada desde la OPS'});
+        cambios.push({id:fo+'|'+bul, folio:fo, b2b:String(r[10]||''), nombre:String(r[4]||''), telefono:String(r[5]||''), direccion:String(r[6]||''), comuna:String(r[7]||''), bulto:bul, qr:'', estado:est, verificado:'no', nota:(opHoy[norm(fo)]?txtRuta(opHoy[norm(fo)])+' | ':'')+'Registrada desde la OPS'});
         nNuevas++;
       });
     });
     var nReag=reagDesdeOps(arr(res[0]),cambios);
-    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Sin movimientos en la OPS: '+c.sin+'.';
+    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Con operativo anotado: '+c.op+' · Sin movimientos en la OPS: '+c.sin+'.';
     if(!cambios.length){ out.textContent='Sin cambios. '+msg; pintar(); pintarLista(); sincBusy=false; return; }
     guardar(cambios).then(function(){ out.textContent=msg; if(nNuevas) return cargar(); pintarLista(); }).then(function(){ sincBusy=false; });
   }).catch(function(){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
