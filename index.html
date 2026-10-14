@@ -78,6 +78,7 @@
 <div class="acciones" id="acciones">
   <button class="btn" id="btn-sync">🔄 Sincronizar OPS</button>
   <button class="btn sec" id="btn-ruta">🚚 Cargar rutas</button>
+  <button class="btn sec" id="btn-mes">📥 Traer el mes</button>
   <button class="btn sec mini" id="btn-recargar" title="Recargar">⟳</button>
   <input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
 </div>
@@ -88,6 +89,7 @@
   <!-- RESUMEN -->
   <div id="t-resumen">
     <div class="kpis" id="kpis"></div>
+    <div id="tarj-op"></div>
     <div id="tarj-ord"></div>
     <div class="card"><h3>Avance de verificación</h3><div id="avance"></div></div>
     <div id="ruta-res" style="font-size:.8rem;color:#475569;margin:0 4px 6px;"></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin:0 4px 8px;"></div>
@@ -291,7 +293,7 @@ function bloqueOrd(k,titulo,color,lista,notaExtra){
   }
   return h+'</div>';
 }
-function opDe(f){ var m=/Ruta [\d-]+ · ([^·]+) ·/.exec(f.nota||''); return m?m[1].trim():'Sin operativo'; }
+function opDe(f){ var m=/(?:Ruta|Entregada) [\d-]+ · ([^·|]+)/.exec(f.nota||''); var o=m?m[1].trim():''; return (o==='Luchín'||o==='Cristian')?o:'Sin operativo'; }
 function bloqueRuta(){
   var lista=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En ruta';}) ? true : null; });
   var nb=0; lista.forEach(function(o){ nb+=o.bultos.filter(function(x){return x.estado==='En ruta';}).length; });
@@ -322,6 +324,21 @@ function pintarTarjOrd(){
   document.querySelectorAll('#tarj-ord .it').forEach(function(e){ e.onclick=function(ev){ ev.stopPropagation(); abrirFicha(e.dataset.id); }; });
 }
 
+function pintarTarjOp(){
+  var hoyD=hoy().slice(0,10), hoyC=hoyD.slice(0,5);
+  var ops={Luchín:{o:{},b:0,h:{}},Cristian:{o:{},b:0,h:{}},'Sin operativo':{o:{},b:0,h:{}}};
+  filas.forEach(function(f){
+    if(f.estado!=='Entregado') return;
+    var k=opDe(f), x=ops[k]; x.o[f.folio]=1; x.b++;
+    var m=/(?:Ruta|Entregada) ([\d-]+)/.exec(f.nota||''); var d=m?m[1].slice(0,5):''; if(d===hoyC) x.h[f.folio]=1;
+  });
+  function n(o){ return Object.keys(o).length; }
+  var tot=n(ops.Luchín.o)+n(ops.Cristian.o)+n(ops['Sin operativo'].o);
+  function col(nom,color){ var x=ops[nom]; return '<div style="flex:1;min-width:100px;border:1px solid #e5eaf2;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:.78rem;color:#64748b;">'+nom+'</div><div style="font-size:1.8rem;font-weight:800;color:'+color+';">'+n(x.o)+'</div><div style="font-size:.72rem;color:#64748b;">órdenes · '+x.b+' bultos</div><div style="font-size:.72rem;color:#0f766e;">hoy: '+n(x.h)+'</div></div>'; }
+  $('tarj-op').innerHTML='<div class="card" style="padding:12px;"><div style="font-size:.85rem;font-weight:700;margin-bottom:8px;">🏁 Entregas por operativo (acumulado)</div><div style="display:flex;gap:8px;flex-wrap:wrap;">'+col('Luchín','#7c3aed')+col('Cristian','#1d4ed8')+'</div>'+
+    (n(ops['Sin operativo'].o)?'<div style="font-size:.74rem;color:#64748b;margin-top:6px;">'+n(ops['Sin operativo'].o)+' órdenes entregadas sin operativo anotado (días antes de que la OPS guardara la asignación).</div>':'')+
+    '<div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">Total entregadas: '+tot+' órdenes (multibulto = 1).</div></div>';
+}
 function pintar(){
   var tot=filas.length, bod=contar(function(f){return f.estado==='En bodega';}), rut=contar(function(f){return f.estado==='En ruta';}), ent=contar(function(f){return f.estado==='Entregado';}), dev=contar(function(f){return f.estado==='Devuelto';});
   var pend=bod+rut, ver=contar(function(f){return pendiente(f)&&f.verificado==='si';});
@@ -335,6 +352,7 @@ function pintar(){
     '<div class="kpi"><b>'+tot+'</b><small>Total de bultos</small></div>';
   var pct = pend? Math.round(ver*100/pend):0;
   $('avance').innerHTML = '<div style="font-size:.85rem;">'+ver+' de '+pend+' bultos por entregar ya están verificados en físico ('+pct+'%)</div><div class="barra"><i style="width:'+pct+'%"></i></div>';
+  pintarTarjOp();
   pintarTarjOrd();
   $('por-comuna').innerHTML = tabla(agrupar('comuna'));
   $('por-marca').innerHTML = tabla(agrupar('b2b'));
@@ -606,6 +624,7 @@ function autoReag(){
 }
 
 $('btn-recargar').onclick=function(){ cargar().then(function(){ toast('Recargado'); }); };
+var msgExtra='';
 var opsInfo = {};   // id del bulto -> {estado, fecha, intentos}
 function fechaOrd(f){ var m=/^(\d{1,2})-(\d{1,2})-(\d{4})/.exec(String(f||'')); return m ? (m[3]+('0'+m[2]).slice(-2)+('0'+m[1]).slice(-2)) : '00000000'; }
 var PESO = {entregado:4, devuelto:3, daniado:2, retorno:1, pendiente:0};
@@ -679,12 +698,81 @@ function sincOps(auto){
       });
     });
     var nReag=reagDesdeOps(arr(res[0]),cambios);
-    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Con operativo anotado: '+c.op+' · Sin movimientos en la OPS: '+c.sin+'.';
-    if(!cambios.length){ out.textContent='Sin cambios. '+msg; pintar(); pintarLista(); sincBusy=false; return; }
+    var msg=(msgExtra?msgExtra+' · Luego, al sincronizar: ':'Listo. ')+'Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Con operativo anotado: '+c.op+' · Sin movimientos en la OPS: '+c.sin+'.';
+    var msgX=msgExtra; msgExtra='';
+    if(!cambios.length){ out.textContent=(msgX?'':'Sin cambios. ')+msg; pintar(); pintarLista(); sincBusy=false; return; }
     guardar(cambios).then(function(){ out.textContent=msg; if(nNuevas) return cargar(); pintarLista(); }).then(function(){ sincBusy=false; });
   }).catch(function(){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
 }
 $('btn-sync').onclick=function(){ sincOps(false); };
+
+// ===== Traer TODAS las órdenes del mes (historial cerrado + lo de hoy) =====
+function importarMes(){
+  if(sincBusy) return; sincBusy=true;
+  var out=$('sync-res'); out.textContent='Leyendo todo el mes desde la OPS… (puede tardar un poquito)';
+  var ck=claveOps(), q=ck?('&clave='+encodeURIComponent(ck)):'';
+  var d0=new Date(), mm=('0'+(d0.getMonth()+1)).slice(-2), yy=String(d0.getFullYear()), hoyD=hoy().slice(0,10);
+  var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  Promise.all([
+    fetch(OPS_URL+'?tipo=detalle_historico'+q).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(OPS_URL+'?tipo=asignaciones'+q).then(function(r){return r.json();}).catch(function(){return null;})
+  ]).then(function(res){
+    if(!res[0] && !res[1]){ sincBusy=false; out.textContent='No pude leer la OPS. Intenta de nuevo.'; return; }
+    var ult={};
+    function poner(o){ var a=ult[o.cod]; if(!a || o.fo>a.fo || (o.fo===a.fo && (PESO[o.estado]||0)>=(PESO[a.estado]||0))) ult[o.cod]=o; }
+    arr(res[0]).slice(1).forEach(function(r){
+      if(!r || !r[1]) return; var m=/^(\d{1,2})-(\d{1,2})-(\d{4})/.exec(String(r[0]||'')); if(!m || ('0'+m[2]).slice(-2)!==mm || m[3]!==yy) return;
+      if(String(r[10]||'').toLowerCase().trim()==='si') return;
+      poner({cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nombre:String(r[3]||''), dir:String(r[4]||''), comuna:String(r[5]||''), b2b:String(r[9]||''), tel:String(r[12]||''), estado:String(r[7]||'').toLowerCase().trim(), fo:fechaOrd(r[0]), fecha:String(r[0]).slice(0,10)});
+    });
+    arr(res[1]).slice(1).forEach(function(r){
+      if(!r || !r[1] || r[18]===true || r[18]==='TRUE') return;
+      poner({cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nombre:String(r[4]||''), dir:String(r[6]||''), comuna:String(r[7]||''), b2b:String(r[10]||''), tel:String(r[5]||''), estado:String(r[11]||'').toLowerCase().trim(), fo:fechaOrd(hoyD), fecha:hoyD, hoy:true});
+    });
+    var asg={}; ((res[2]&&res[2].asignaciones)||[]).forEach(function(a){ if(!a||!a.codigo) return; var p=asg[a.codigo]; if(!p||(a.ts||0)>=(p.ts||0)) asg[a.codigo]=a; });
+    var NOMOP={op2:'Luchín',cristian:'Cristian'};
+    var existe={}; filas.forEach(function(f){ existe[norm(f.folio)]=1; if(f.qr) existe[norm(f.qr)]=1; });
+    var g={}, orden=[];
+    Object.keys(ult).forEach(function(k){ var o=ult[k]; if(existe[norm(o.folio)] || existe[norm(o.cod)]) return; if(!g[o.folio]){ g[o.folio]=[]; orden.push(o.folio); } g[o.folio].push(o); });
+    var anot=[];
+    filas.forEach(function(f){
+      if(/(?:Ruta|Entregada) [\d-]+ · (Luchín|Cristian)/.test(f.nota||'')) return;
+      var hit=null;
+      Object.keys(ult).some(function(k){ var u=ult[k]; if(norm(u.folio)===norm(f.folio) || (f.qr && norm(u.cod)===norm(f.qr))){ hit=u; return true; } return false; });
+      if(!hit || hit.estado!=='entregado') return;
+      var a=asg[hit.cod], op=a&&NOMOP[a.repartidor]; if(!op) return;
+      anot.push({id:f.id, nota:(f.nota?f.nota+' | ':'')+'Entregada '+hit.fecha.slice(0,5)+' · '+op});
+    });
+    var nuevas=[], c={ent:0,dev:0,bod:0,ruta:0};
+    orden.forEach(function(fo){
+      var gr=g[fo];
+      gr.forEach(function(o,i){
+        var e=o.estado, est=e==='entregado'?'Entregado':e==='devuelto'?'Devuelto':(o.hoy&&e==='pendiente')?'En ruta':'En bodega';
+        if(est==='Entregado') c.ent++; else if(est==='Devuelto') c.dev++; else if(est==='En ruta') c.ruta++; else c.bod++;
+        var a=asg[o.cod], op=a&&NOMOP[a.repartidor];
+        var nota=(est==='Entregado'?'Entregada '+o.fecha.slice(0,5)+(op?' · '+op:''):est==='En ruta'?'Ruta '+hoyD+(op?' · '+op:''):est==='Devuelto'?'Devuelta a Alas '+o.fecha.slice(0,5):(e==='daniado'?'Dañado · ':'')+'Último movimiento '+o.fecha.slice(0,5))+' | Registrada desde la OPS (mes)';
+        var bul=(i+1)+' de '+gr.length;
+        nuevas.push({id:fo+'|'+bul, folio:fo, b2b:o.b2b, nombre:o.nombre, telefono:o.tel, direccion:o.dir, comuna:o.comuna, bulto:bul, qr:'', estado:est, verificado:'no', nota:nota});
+      });
+    });
+    if(!nuevas.length && !anot.length){ sincBusy=false; out.textContent='El inventario ya tiene todo lo de '+MESES[d0.getMonth()]+' que está en la OPS. Total en la OPS este mes: '+Object.keys(ult).length+' bultos.'; return; }
+    nuevas=nuevas.concat(anot);
+    var lotes=[]; for(var i=0;i<nuevas.length;i+=100) lotes.push(nuevas.slice(i,i+100));
+    var hechos=0, fallo=false;
+    (function sig(k){
+      if(k>=lotes.length || fallo){
+        sincBusy=false;
+        out.textContent=fallo ? ('Se cortó a mitad de camino (se guardaron '+hechos+' de '+nuevas.length+'). Toca de nuevo "Traer el mes" para seguir.') : ('Listo. Agregué '+(hechos-anot.length)+' bultos de '+MESES[d0.getMonth()]+' · Entregados: '+c.ent+' · Devueltos: '+c.dev+' · En bodega: '+c.bod+' · En ruta: '+c.ruta+' · Operativo anotado en otros '+anot.length+'.');
+        if(!fallo) msgExtra=out.textContent;
+        cargar().then(function(){ sincOps(true); }); return;
+      }
+      out.textContent='Guardando '+Math.min((k+1)*100,nuevas.length)+' de '+nuevas.length+'…';
+      llamar({accion:'guardar',filas:lotes[k]}).then(function(j){ if(j.status!=='ok'){ fallo=true; } else hechos+=lotes[k].length; sig(k+1); }).catch(function(){ fallo=true; sig(k+1); });
+    })(0);
+  }).catch(function(){ sincBusy=false; out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
+}
+$('btn-mes').onclick=function(){ importarMes(); };
 // Cada 2 minutos, con la página abierta, revisa la OPS y registra lo nuevo
 setInterval(function(){ if(!document.hidden && filas.length) sincOps(true); },120000);
 
