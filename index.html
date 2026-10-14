@@ -41,6 +41,21 @@
   .aviso{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:10px;font-size:.82rem;margin-bottom:10px;}
   .oculto{display:none;}
   .barra{height:10px;background:#e5eaf2;border-radius:6px;overflow:hidden;margin:6px 0 2px;} .barra i{display:block;height:100%;background:var(--verde);}
+  /* Tarjetas estilo Muspel OPS */
+  .pq{background:#fff;border:1px solid var(--borde);border-left:4px solid #2563a8;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+  .pq.ruta{border-left-color:#f59e0b;} .pq.entregado{border-left-color:#1a7a4a;opacity:.78;} .pq.devuelto{border-left-color:#b91c1c;opacity:.78;} .pq.reag{border-left-color:#7c3aed;}
+  .pq-num{flex-shrink:0;background:var(--azul);color:#fff;border-radius:8px;min-width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:800;}
+  .pq-i{flex:1;min-width:0;} .pq-n{font-weight:600;font-size:.88rem;} .pq-d{font-size:.74rem;color:#64748b;margin-top:2px;} .pq-c{font-size:.68rem;color:#94a3b8;font-family:monospace;margin-top:3px;}
+  .pq-mb{font-size:.68rem;font-weight:700;color:#92400e;} .pq-op{display:inline-block;background:#e0f2fe;color:#075985;font-size:.66rem;font-weight:700;border-radius:6px;padding:1px 7px;margin:2px 0;}
+  .pq-b2b{font-size:.72rem;font-weight:800;color:var(--azul2);}
+  .pq-reag{display:inline-block;background:#ede9fe;border:1px solid #a855f7;color:#6b21a8;border-radius:6px;padding:3px 8px;margin:3px 0;font-size:.68rem;font-weight:800;}
+  .b.reag{background:#ede9fe;color:#6b21a8;}
+  /* Calendario */
+  .cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;} .cal-h b{font-size:1rem;color:var(--azul);text-transform:capitalize;}
+  .cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;} .cal-dow{font-size:.68rem;font-weight:700;color:#64748b;text-align:center;padding:2px 0;}
+  .cal-d{min-height:54px;border:1px solid var(--borde);border-radius:8px;background:#fff;padding:4px;font-size:.78rem;cursor:pointer;}
+  .cal-d.hoy{border-color:var(--azul2);box-shadow:inset 0 0 0 1px var(--azul2);} .cal-d.sel{background:#ede9fe;border-color:#7c3aed;}
+  .cal-n{display:inline-block;margin-top:3px;background:#7c3aed;color:#fff;border-radius:99px;font-size:.66rem;font-weight:800;padding:1px 7px;} .cal-n.venc{background:#b91c1c;}
   table{width:100%;border-collapse:collapse;font-size:.82rem;} td,th{padding:6px 4px;border-bottom:1px solid var(--borde);text-align:left;} td.n,th.n{text-align:right;}
 </style>
 </head>
@@ -52,6 +67,7 @@
   <div class="tab" data-t="escanear">Escanear</div>
   <div class="tab" data-t="lista">Lista</div>
   <div class="tab" data-t="faltan">Faltan</div>
+  <div class="tab" data-t="calendario">Calendario</div>
 </div>
 
 <div class="wrap">
@@ -62,6 +78,10 @@
     <div class="kpis" id="kpis"></div>
     <div id="tarj-ord"></div>
     <div class="card"><h3>Avance de verificación</h3><div id="avance"></div></div>
+    <div class="card"><h3>Rutas del día (Luchín y Cristian)</h3>
+      <div style="font-size:.8rem;color:#64748b;margin-bottom:8px;">Elige los 2 Excel de la ruta. Las órdenes que estén en las pestañas «Luchin» y «Cristian» pasan a <b>En ruta</b>, con el nombre del operativo.</div>
+      <button class="btn" id="btn-ruta">Cargar rutas (Excel)</button><input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
+      <div id="ruta-res" style="font-size:.82rem;color:#475569;margin-top:8px;"></div></div>
     <div class="card"><div class="fila"><button class="btn sec" id="btn-sync">Sincronizar con la OPS</button><button class="btn sec" id="btn-recargar">Recargar</button></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin-top:8px;"></div></div>
     <div class="card"><h3>Por entregar, por comuna</h3><div id="por-comuna"></div></div>
     <div class="card"><h3>Por entregar, por marca</h3><div id="por-marca"></div></div>
@@ -92,7 +112,7 @@
     <div class="card">
       <input id="q" placeholder="Buscar nombre, folio, dirección…" style="margin-bottom:8px;">
       <div class="fila">
-        <select id="f-estado" style="flex:1;"><option value="">Todos los estados</option><option>En bodega</option><option>En ruta</option><option>Entregado</option><option>Devuelto</option></select>
+        <select id="f-estado" style="flex:1;"><option value="pend">Por entregar (bodega + ruta)</option><option value="fisico">Físico en bodega (verificado o no)</option><option value="entreg">Ya entregados</option><option value="reag">Reagendados</option><option value="">Todos los estados</option><option>En bodega</option><option>En ruta</option><option>Entregado</option><option>Devuelto</option></select>
         <select id="f-ver" style="flex:1;"><option value="">Verificados y no</option><option value="si">Solo verificados</option><option value="no">Solo sin verificar</option></select>
       </div>
       <div class="fila" style="margin-top:8px;"><select id="f-comuna" style="flex:1;"><option value="">Todas las comunas</option></select><select id="f-b2b" style="flex:1;"><option value="">Todas las marcas</option></select></div>
@@ -102,11 +122,15 @@
 
   <!-- FALTAN -->
   <div id="t-faltan" class="oculto"><div id="faltan"></div></div>
+
+  <!-- CALENDARIO -->
+  <div id="t-calendario" class="oculto"><div id="calendario"></div></div>
 </div>
 
 <div class="modal" id="modal"><div class="hoja" id="hoja"></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ===== Configuración =====
 var INV_URL = 'https://script.google.com/macros/s/AKfycbykCAxXOCy2oFPHsNVsXgN4kTzlax5iWCNK4sLSkpeYLD8_SltLDAbkEV4Q6lcT1u3LUw/exec';   // la URL del Apps Script nuevo (la pone Claude/Kathy)
@@ -161,7 +185,7 @@ function guardar(cambios){
 document.querySelectorAll('.tab').forEach(function(t){
   t.onclick=function(){
     document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');}); t.classList.add('on');
-    ['resumen','escanear','lista','faltan'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
+    ['resumen','escanear','lista','faltan','calendario'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
     if(t.dataset.t!=='escanear') detener();
     pintar();
   };
@@ -169,11 +193,21 @@ document.querySelectorAll('.tab').forEach(function(t){
 
 // ===== Utilidades de estado =====
 function claseEstado(e){ return e==='Entregado'?'ent':e==='En ruta'?'rut':e==='Devuelto'?'dev':'bod'; }
-function badges(f){
+function badges(f,sinReag){
   return '<span class="b '+claseEstado(f.estado)+'">'+esc(f.estado||'En bodega')+'</span>'+
-         (f.verificado==='si'?'<span class="b ver">Verificado</span>':'<span class="b nover">Sin verificar</span>');
+         (f.verificado==='si'?'<span class="b ver">Verificado</span>':'<span class="b nover">Sin verificar</span>')+
+         ((!sinReag && reagDe(f) && pendiente(f))?'<span class="b reag">Reagendado '+esc(fechaTxt(reagDe(f).fecha))+'</span>':'');
 }
 function pendiente(f){ return f.estado==='En bodega' || f.estado==='En ruta'; }
+
+// ===== Reagendado: se guarda dentro de «nota» como  REAG:AAAA-MM-DD:motivo  (no cambia la planilla) =====
+function reagDe(f){ var m=/REAG:(\d{4}-\d{2}-\d{2})(?::([^|]*))?/.exec(f.nota||''); return m?{fecha:m[1],motivo:(m[2]||'').trim()}:null; }
+function fechaTxt(iso){ var p=String(iso).split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):iso; }
+function notaSinReag(n){ return String(n||'').split('|').map(function(x){return x.trim();}).filter(function(x){return x && x.indexOf('REAG:')!==0;}).join(' | '); }
+function notaConReag(n,iso,motivo){ var b=notaSinReag(n), t='REAG:'+iso+(motivo?':'+String(motivo).replace(/[|:]/g,' ').replace(/\s+/g,' ').trim():''); return b?(b+' | '+t):t; }
+function isoHoy(){ var d=new Date(); function z(n){return (n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function bultosDe(folio){ return filas.filter(function(x){return x.folio===folio;}); }
+function reagTag(f){ var r=reagDe(f); if(!r||!pendiente(f)) return ''; return '<div class="pq-reag">📅 REAGENDADO · '+esc(fechaTxt(r.fecha))+'</div>'+(r.motivo?'<div style="font-size:.72rem;color:#6b21a8;">'+esc(r.motivo)+'</div>':''); }
 
 // ===== Resumen =====
 function contar(fn){ return filas.filter(fn).length; }
@@ -192,17 +226,36 @@ function porComunaOrd(lista){
 function togTarj(k){ abTarj[k]=!abTarj[k]; pintarTarjOrd(); }
 function togCom(k,c){ var kk=k+'|'+c; abCom[kk]=!abCom[kk]; pintarTarjOrd(); }
 function ordHtml(o,modo){
-  var f=o.bultos[0], tot=o.bultos.length;
-  var enBod=o.bultos.filter(function(x){return x.estado==='En bodega' && x.verificado==='si';}).length;
-  var linea = modo==='bod' ? (tot>1 ? enBod+' de '+tot+' bultos en bodega' : '1 bulto en bodega') : (tot>1 ? tot+' bultos entregados' : '1 bulto entregado');
-  var ops = textoOps(f) ? '<div style="font-size:.74rem;color:#475569;margin-top:2px;">'+esc(textoOps(f))+'</div>' : '';
-  return '<div class="card it" data-id="'+esc(f.id)+'" style="margin:6px 0;"><div class="n">'+esc(f.nombre)+'</div>'+
-    '<div class="d">'+esc(f.direccion)+'</div>'+
-    '<div class="m">'+esc(f.b2b)+' · '+esc(f.folio)+(f.telefono?' · Tel. '+esc(f.telefono):'')+'</div>'+
-    '<div style="margin-top:6px;"><span class="b '+(modo==='bod'?'bod':'ent')+'">'+esc(linea)+'</span>'+(modo==='bod'&&o.bultos.some(function(x){return x.estado==='En bodega'&&x.verificado==='si'&&x.ubicacion;})?'<span class="b nover">'+esc(o.bultos.filter(function(x){return x.ubicacion;})[0].ubicacion)+'</span>':'')+'</div>'+ops+'</div>';
+  var tot=o.bultos.length;
+  var f=o.bultos.filter(function(x){return modo==='bod'?x.estado==='En bodega':modo==='rut'?x.estado==='En ruta':true;})[0]||o.bultos[0];
+  var enBod=o.bultos.filter(function(x){return x.estado==='En bodega';}).length, verif=o.bultos.filter(function(x){return x.estado==='En bodega' && x.verificado==='si';}).length;
+  var enRut=o.bultos.filter(function(x){return x.estado==='En ruta';}).length;
+  var linea = modo==='bod' ? enBod+' de '+tot+' en bodega · '+verif+' verificado'+(verif===1?'':'s') : modo==='rut' ? enRut+' de '+tot+' en ruta' : (tot>1 ? tot+' bultos entregados' : 'Entregado');
+  return cardOps(f,{tot:tot,linea:linea});
+}
+// Tarjeta con el mismo estilo de la OPS de despacho
+function cardOps(f,o){
+  o=o||{}; var est=f.estado||'En bodega';
+  var cls= est==='Entregado'?'entregado':est==='Devuelto'?'devuelto':est==='En ruta'?'ruta':'bodega'; if(reagDe(f)&&pendiente(f)) cls+=' reag';
+  var par=/parada (\d+)/.exec(f.nota||''), bp=bparse(f.bulto);
+  var h='<div class="pq '+cls+' it" data-id="'+esc(f.id)+'">';
+  if(par) h+='<div class="pq-num">'+esc(par[1])+'</div>';
+  h+='<div class="pq-i">';
+  if(o.tot>1) h+='<div class="pq-mb">📦 MULTIBULTO — '+o.tot+' bultos del mismo pedido'+(o.linea?' · '+esc(o.linea):'')+'</div>';
+  else if(bp[1]>1) h+='<div class="pq-mb">📦 Bulto '+bp[0]+' de '+bp[1]+'</div>';
+  else if(o.linea) h+='<div class="pq-mb" style="color:#475569;">'+esc(o.linea)+'</div>';
+  h+=reagTag(f);
+  h+='<div class="pq-n">'+esc(f.nombre)+'</div>';
+  if(est==='En ruta') h+='<div class="pq-op">🚚 '+esc(opDe(f).replace('Sin operativo','OP. sin asignar'))+'</div>';
+  if(f.b2b) h+='<div class="pq-b2b">🏪 '+esc(f.b2b)+'</div>';
+  h+='<div class="pq-d">'+esc(f.direccion)+(f.comuna?' · '+esc((f.comuna||'').trim()):'')+(f.telefono?' · '+esc(f.telefono):'')+'</div>';
+  h+='<div class="pq-c">'+esc(f.folio)+(f.ubicacion?' · 📍 '+esc(f.ubicacion):'')+'</div>';
+  h+='<div style="margin-top:4px;">'+badges(f,true)+'</div>';
+  if(textoOps(f)) h+='<div style="font-size:.72rem;color:#475569;margin-top:3px;">'+esc(textoOps(f))+'</div>';
+  return h+'</div></div>';
 }
 function bloqueOrd(k,titulo,color,lista,notaExtra){
-  var nb=0; lista.forEach(function(o){ nb+= (k==='bod') ? o.bultos.filter(function(x){return x.estado==='En bodega'&&x.verificado==='si';}).length : o.bultos.length; });
+  var nb=0; lista.forEach(function(o){ nb+= (k==='bod') ? o.bultos.filter(function(x){return x.estado==='En bodega';}).length : o.bultos.length; });
   var abierto=!!abTarj[k];
   var h='<div class="card" style="padding:0;"><div onclick="togTarj(\''+k+'\')" style="display:flex;justify-content:space-between;align-items:center;padding:12px;cursor:pointer;">'+
     '<div><div style="font-size:.78rem;color:#64748b;">'+esc(titulo)+'</div><div style="font-size:1.7rem;font-weight:700;color:'+color+';">'+lista.length+' <span style="font-size:.85rem;font-weight:600;">'+(lista.length===1?'orden':'órdenes')+'</span></div>'+
@@ -212,7 +265,7 @@ function bloqueOrd(k,titulo,color,lista,notaExtra){
     var grupos=porComunaOrd(lista);
     if(!grupos.length) h+='<div style="font-size:.85rem;color:#64748b;">No hay órdenes aquí todavía.</div>';
     grupos.forEach(function(gr){
-      var kk=k+'|'+gr.comuna, ab=!!abCom[kk], nbg=0; gr.ords.forEach(function(o){nbg+= (k==='bod') ? o.bultos.filter(function(x){return x.estado==='En bodega'&&x.verificado==='si';}).length : o.bultos.length;});
+      var kk=k+'|'+gr.comuna, ab=!!abCom[kk], nbg=0; gr.ords.forEach(function(o){nbg+= (k==='bod') ? o.bultos.filter(function(x){return x.estado==='En bodega';}).length : o.bultos.length;});
       h+='<div onclick="togCom(\''+k+'\',decodeURIComponent(\''+encodeURIComponent(gr.comuna)+'\'))" style="display:flex;justify-content:space-between;padding:10px 4px;border-top:1px solid #e5eaf2;cursor:pointer;font-weight:600;font-size:.9rem;">'+
          '<span>'+(ab?'▾':'▸')+' '+esc(gr.comuna)+'</span><span style="color:#64748b;font-weight:500;">'+gr.ords.length+' órdenes · '+nbg+' bultos</span></div>';
       if(ab) h+=gr.ords.map(function(o){return ordHtml(o,k);}).join('');
@@ -221,12 +274,34 @@ function bloqueOrd(k,titulo,color,lista,notaExtra){
   }
   return h+'</div>';
 }
+function opDe(f){ var m=/Ruta [\d-]+ · ([^·]+) ·/.exec(f.nota||''); return m?m[1].trim():'Sin operativo'; }
+function bloqueRuta(){
+  var lista=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En ruta';}) ? true : null; });
+  var nb=0; lista.forEach(function(o){ nb+=o.bultos.filter(function(x){return x.estado==='En ruta';}).length; });
+  var ab=!!abTarj.rut, h='<div class="card" style="padding:0;"><div onclick="togTarj(\'rut\')" style="display:flex;justify-content:space-between;align-items:center;padding:12px;cursor:pointer;">'+
+    '<div><div style="font-size:.78rem;color:#64748b;">En ruta (salieron con Luchín o Cristian)</div><div style="font-size:1.7rem;font-weight:700;color:#b45309;">'+lista.length+' <span style="font-size:.85rem;font-weight:600;">'+(lista.length===1?'orden':'órdenes')+'</span></div>'+
+    '<div style="font-size:.74rem;color:#64748b;">'+nb+' bultos</div></div><div style="font-size:1.2rem;color:#64748b;">'+(ab?'▲':'▼')+'</div></div>';
+  if(ab){
+    h+='<div style="padding:0 12px 12px;">';
+    var g={}; lista.forEach(function(o){ var f=o.bultos.filter(function(x){return x.estado==='En ruta';})[0]; var k=opDe(f); (g[k]=g[k]||[]).push(o); });
+    var ks=Object.keys(g).sort();
+    if(!ks.length) h+='<div style="font-size:.85rem;color:#64748b;">No hay órdenes en ruta.</div>';
+    ks.forEach(function(k){
+      var kk='rut|'+k, abr=!!abCom[kk], nbg=0; g[k].forEach(function(o){ nbg+=o.bultos.filter(function(x){return x.estado==='En ruta';}).length; });
+      h+='<div onclick="togCom(\'rut\',decodeURIComponent(\''+encodeURIComponent(k)+'\'))" style="display:flex;justify-content:space-between;padding:10px 4px;border-top:1px solid #e5eaf2;cursor:pointer;font-weight:600;font-size:.9rem;"><span>'+(abr?'▾':'▸')+' '+esc(k)+'</span><span style="color:#64748b;font-weight:500;">'+g[k].length+' órdenes · '+nbg+' bultos</span></div>';
+      if(abr) h+=g[k].map(function(o){return ordHtml(o,'rut');}).join('');
+    });
+    h+='</div>';
+  }
+  return h+'</div>';
+}
 function pintarTarjOrd(){
-  var bod=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En bodega' && x.verificado==='si';}) ? true : null; });
-  var sinVer=ordenesDe(function(b){ return (!b.some(function(x){return x.estado==='En bodega' && x.verificado==='si';}) && b.some(function(x){return x.estado==='En bodega';})) ? true : null; });
+  var bod=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En bodega';}) ? true : null; });
+  var bBod=filas.filter(function(x){return x.estado==='En bodega';}), bVer=bBod.filter(function(x){return x.verificado==='si';}).length;
+  var nReagBod=bod.filter(function(o){return o.bultos.some(function(x){return x.estado==='En bodega' && reagDe(x);});}).length;
   var ent=ordenesDe(function(b){ return b.every(function(x){return x.estado==='Entregado';}) ? true : null; });
-  $('tarj-ord').innerHTML = bloqueOrd('bod','En bodega (físico, ya escaneadas)','#1d4ed8',bod, sinVer.length? sinVer.length+(sinVer.length===1?' orden más registrada sin verificar':' órdenes más registradas sin verificar'):'') +
-                            bloqueOrd('ent','Entregadas','#166534',ent,'');
+  $('tarj-ord').innerHTML = bloqueOrd('bod','En bodega (físico real, verificado o no)','#1d4ed8',bod, bVer+' de '+bBod.length+' ya escaneados'+(nReagBod?' · '+nReagBod+' reagendada'+(nReagBod===1?'':'s'):'')) +
+                            bloqueRuta() + bloqueOrd('ent','Entregadas (ya no están en la bodega)','#166534',ent,'');
   document.querySelectorAll('#tarj-ord .it').forEach(function(e){ e.onclick=function(ev){ ev.stopPropagation(); abrirFicha(e.dataset.id); }; });
 }
 
@@ -236,9 +311,10 @@ function pintar(){
   $('kpis').innerHTML =
     '<div class="kpi naranja"><b>'+pend+'</b><small>Por entregar (bultos)</small></div>'+
     '<div class="kpi verde"><b>'+ent+'</b><small>Entregados</small></div>'+
-    '<div class="kpi"><b>'+bod+'</b><small>En bodega</small></div>'+
+    '<div class="kpi"><b>'+bod+'</b><small>En bodega (físico)</small></div>'+
     '<div class="kpi"><b>'+rut+'</b><small>En ruta</small></div>'+
     '<div class="kpi rojo"><b>'+dev+'</b><small>Devueltos</small></div>'+
+    '<div class="kpi" style="border-color:#c4b5fd;"><b style="color:#7c3aed;">'+nOrdReag()+'</b><small>Órdenes reagendadas</small></div>'+
     '<div class="kpi"><b>'+tot+'</b><small>Total de bultos</small></div>';
   var pct = pend? Math.round(ver*100/pend):0;
   $('avance').innerHTML = '<div style="font-size:.85rem;">'+ver+' de '+pend+' bultos por entregar ya están verificados en físico ('+pct+'%)</div><div class="barra"><i style="width:'+pct+'%"></i></div>';
@@ -247,6 +323,7 @@ function pintar(){
   $('por-marca').innerHTML = tabla(agrupar('b2b'));
   if(!$('t-lista').classList.contains('oculto')) pintarLista();
   if(!$('t-faltan').classList.contains('oculto')) pintarFaltan();
+  if(!$('t-calendario').classList.contains('oculto')) pintarCalendario();
 }
 function agrupar(campo){
   var g={}; filas.filter(pendiente).forEach(function(f){ var k=(f[campo]||'(sin dato)').trim(); g[k]=g[k]||{n:0,v:0}; g[k].n++; if(f.verificado==='si') g[k].v++; });
@@ -271,7 +348,7 @@ function irPag(n){ pag=n; pintarLista(); window.scrollTo(0,0); }
 function pintarLista(){
   var q=norm($('q').value), fe=$('f-estado').value, fv=$('f-ver').value, fc=$('f-comuna').value, fb=$('f-b2b').value;
   var r=filas.filter(function(f){
-    if(fe && f.estado!==fe) return false; if(fv && f.verificado!==fv) return false;
+    if(fe==='pend'){ if(!pendiente(f)) return false; } else if(fe==='fisico'){ if(f.estado!=='En bodega') return false; } else if(fe==='entreg'){ if(f.estado!=='Entregado') return false; } else if(fe==='reag'){ if(!reagDe(f)||!pendiente(f)) return false; } else if(fe && f.estado!==fe) return false; if(fv && f.verificado!==fv) return false;
     if(fc && (f.comuna||'').trim()!==fc) return false; if(fb && (f.b2b||'').trim()!==fb) return false;
     if(q && (norm(f.nombre)+' '+norm(f.folio)+' '+norm(f.direccion)+' '+norm(f.qr)).indexOf(q)<0) return false;
     return true;
@@ -286,10 +363,7 @@ function pintarLista(){
     r.slice(ini,fin).map(function(f){ return tarjeta(f); }).join('')+nav;
   document.querySelectorAll('#lista .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
 }
-function tarjeta(f){
-  return '<div class="card it" data-id="'+esc(f.id)+'"><div class="n">'+esc(f.nombre)+' <span style="font-weight:400;color:#64748b;">· '+esc(f.bulto)+'</span></div>'+
-    '<div class="d">'+esc(f.direccion)+'</div><div class="m">'+esc(f.b2b)+' · '+esc(f.folio)+' · '+esc((f.comuna||'').trim())+(f.ubicacion?' · '+esc(f.ubicacion):'')+'</div><div style="margin-top:6px;">'+badges(f)+'</div>'+(textoOps(f)?'<div style="font-size:.74rem;color:#475569;margin-top:4px;">'+esc(textoOps(f))+'</div>':'')+'</div>';
-}
+function tarjeta(f){ return cardOps(f,{}); }
 
 // ===== Ficha de un bulto =====
 function abrirModal(html){ $('hoja').innerHTML=html; $('modal').classList.add('on'); }
@@ -305,7 +379,7 @@ function abrirFicha(id){
     '<label style="font-size:.8rem;color:#64748b;">Estado</label><select id="m-estado">'+ESTADOS.map(function(e){return '<option'+(e===f.estado?' selected':'')+'>'+e+'</option>';}).join('')+'</select>'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Ubicación</label><input id="m-ubic" value="'+esc(f.ubicacion)+'">'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Nota</label><input id="m-nota" value="'+esc(f.nota)+'">'+
-    '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="m-ok">Guardar</button>'+
+    '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="m-ok">Guardar</button><button class="btn" id="m-reag" style="background:#7c3aed;">📅 Reagendar</button>'+
     (f.verificado==='si'?'<button class="btn sec" id="m-nover">Quitar verificado</button>':'<button class="btn" id="m-ver">Marcar verificado</button>')+
     '<button class="btn sec" id="m-x">Cerrar</button></div>');
   function base(){ return {id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; }
@@ -313,6 +387,63 @@ function abrirFicha(id){
   if($('m-ver')) $('m-ver').onclick=function(){ var c=base(); c.verificado='si'; c.fechaVerif=hoy(); guardar([c]); cerrarModal(); toast('Verificado'); };
   if($('m-nover')) $('m-nover').onclick=function(){ var c=base(); c.verificado='no'; c.fechaVerif=''; guardar([c]); cerrarModal(); };
   $('m-x').onclick=cerrarModal;
+  $('m-reag').onclick=function(){ abrirReagendar(f.folio); };
+}
+
+
+// ===== Reagendar y calendario =====
+function nOrdReag(){ var u={}; filas.forEach(function(f){ if(reagDe(f)&&pendiente(f)) u[f.folio]=1; }); return Object.keys(u).length; }
+function abrirReagendar(folio){
+  var bs=bultosDe(folio).filter(pendiente); if(!bs.length){ toast('Esa orden ya no está pendiente'); return; }
+  var f=bs[0], r=reagDe(f)||{fecha:'',motivo:''};
+  abrirModal('<h3>📅 Reagendar orden</h3><div class="pq-n">'+esc(f.nombre)+'</div><div class="pq-d">'+esc(f.b2b)+' · '+esc(folio)+' · '+bs.length+' bulto'+(bs.length>1?'s':'')+'</div>'+
+    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:10px;">Nueva fecha</label><input type="date" id="r-fecha" value="'+esc(r.fecha)+'" min="'+isoHoy()+'">'+
+    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Motivo</label><input id="r-mot" value="'+esc(r.motivo)+'" placeholder="Ej: cliente de vacaciones, abre el martes 20">'+
+    '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="r-ok">Guardar</button>'+(reagDe(f)?'<button class="btn rojo" id="r-quitar">Quitar reagendado</button>':'')+'<button class="btn sec" id="r-x">Cancelar</button></div>');
+  $('r-x').onclick=cerrarModal;
+  $('r-ok').onclick=function(){
+    var iso=$('r-fecha').value; if(!iso){ toast('Elige una fecha'); return; }
+    var mot=$('r-mot').value.trim();
+    guardar(bs.map(function(b){ return {id:b.id, nota:notaConReag(b.nota,iso,mot)}; })).then(function(){ toast('Reagendado para '+fechaTxt(iso)); });
+    calSel=iso; var p=iso.split('-'); calY=+p[0]; calM=+p[1]-1; cerrarModal();
+  };
+  if($('r-quitar')) $('r-quitar').onclick=function(){ guardar(bs.map(function(b){ return {id:b.id, nota:notaSinReag(b.nota)}; })).then(function(){ toast('Se quitó el reagendado'); }); cerrarModal(); };
+}
+var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+var calY=null, calM=null, calSel='';
+function z2(n){ return (n<10?'0':'')+n; }
+function reagPorFecha(){
+  var g={}, por={};
+  filas.forEach(function(f){ var r=reagDe(f); if(!r||!pendiente(f)) return; var o=por[f.folio]; if(!o){ o=por[f.folio]={folio:f.folio,fecha:r.fecha,bultos:[]}; (g[r.fecha]=g[r.fecha]||[]).push(o); } o.bultos.push(f); });
+  return g;
+}
+function calIr(d){ calM+=d; if(calM<0){ calM=11; calY--; } if(calM>11){ calM=0; calY++; } pintarCalendario(); }
+function calHoy(){ var d=new Date(); calY=d.getFullYear(); calM=d.getMonth(); calSel=isoHoy(); pintarCalendario(); }
+function pintarCalendario(){
+  var hoyIso=isoHoy(); if(calY===null){ var d0=new Date(); calY=d0.getFullYear(); calM=d0.getMonth(); }
+  var g=reagPorFecha(), off=(new Date(calY,calM,1).getDay()+6)%7, dim=new Date(calY,calM+1,0).getDate();
+  var h='<div class="card"><div class="cal-h"><button class="btn sec chico" id="cal-prev">◀</button><b>'+MESES[calM]+' '+calY+'</b><button class="btn sec chico" id="cal-next">▶</button></div><div class="cal-g">'+
+    ['L','M','M','J','V','S','D'].map(function(x){return '<div class="cal-dow">'+x+'</div>';}).join('');
+  for(var i=0;i<off;i++) h+='<div></div>';
+  for(var d=1;d<=dim;d++){
+    var iso=calY+'-'+z2(calM+1)+'-'+z2(d), n=(g[iso]||[]).length;
+    h+='<div class="cal-d'+(iso===hoyIso?' hoy':'')+(iso===calSel?' sel':'')+'" data-iso="'+iso+'">'+d+(n?'<br><span class="cal-n'+(iso<hoyIso?' venc':'')+'">'+n+'</span>':'')+'</div>';
+  }
+  h+='</div><div class="fila" style="margin-top:8px;"><button class="btn sec chico" id="cal-hoy">Hoy</button>'+(calSel?'<button class="btn sec chico" id="cal-todas">Ver todas</button>':'')+'<span style="font-size:.72rem;color:#64748b;">El número es la cantidad de órdenes reagendadas ese día. En rojo: la fecha ya pasó y siguen pendientes.</span></div></div>';
+  var fechas = calSel ? [calSel] : Object.keys(g).sort();
+  var con = fechas.filter(function(x){ return (g[x]||[]).length; });
+  h+='<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;">'+(calSel?'Reagendadas para '+fechaTxt(calSel):'Todas las órdenes reagendadas')+'</div>';
+  if(!con.length) h+='<div class="card" style="font-size:.85rem;color:#64748b;">'+(calSel?'No hay órdenes reagendadas para ese día.':'No hay órdenes reagendadas. Para reagendar una, ábrela desde Lista o Resumen y presiona «📅 Reagendar».')+'</div>';
+  con.forEach(function(fe){
+    h+='<div style="font-size:.78rem;font-weight:700;color:'+(fe<hoyIso?'#b91c1c':'#6b21a8')+';margin:10px 4px 4px;">📅 '+fechaTxt(fe)+(fe<hoyIso?' · fecha vencida':'')+' · '+g[fe].length+' orden'+(g[fe].length===1?'':'es')+'</div>';
+    g[fe].forEach(function(o){ h+=cardOps(o.bultos[0],{tot:o.bultos.length})+'<div style="margin:-2px 0 8px;"><button class="btn sec chico" data-reag="'+esc(o.folio)+'">Cambiar fecha o quitar</button></div>'; });
+  });
+  $('calendario').innerHTML=h;
+  $('cal-prev').onclick=function(){ calIr(-1); }; $('cal-next').onclick=function(){ calIr(1); }; $('cal-hoy').onclick=calHoy;
+  if($('cal-todas')) $('cal-todas').onclick=function(){ calSel=''; pintarCalendario(); };
+  document.querySelectorAll('#calendario .cal-d').forEach(function(e){ e.onclick=function(){ calSel=(calSel===e.dataset.iso)?'':e.dataset.iso; pintarCalendario(); }; });
+  document.querySelectorAll('#calendario .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
+  document.querySelectorAll('#calendario [data-reag]').forEach(function(e){ e.onclick=function(){ abrirReagendar(e.dataset.reag); }; });
 }
 
 // ===== Escanear =====
@@ -426,6 +557,32 @@ function pintarFaltan(){
 }
 
 // ===== Sincronizar con la OPS =====
+
+// Lo que anota Vicho en la OPS ("REAGENDADO PARA: 20/10/2026. MOTIVO: ...") queda como reagendado aquí
+function reagDesdeOps(rowsOrd, cambios){
+  var ro={}; (rowsOrd||[]).slice(1).forEach(function(r){
+    if(!r) return; var ob=String(r[20]||''); var m=/REAGENDAD[OA]\s+PARA:\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/i.exec(ob); if(!m) return;
+    var y=m[3].length===2?'20'+m[3]:m[3], iso=y+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2), mo=/MOTIVO:\s*(.*)$/i.exec(ob);
+    [r[2],r[1]].forEach(function(k){ k=norm(k); if(k) ro[k]={iso:iso,motivo:mo?mo[1].trim():''}; });
+  });
+  var idx={}; cambios.forEach(function(c){ idx[c.id]=c; }); var n=0;
+  filas.forEach(function(f){
+    var o=ro[norm(f.folio)] || (f.qr && ro[norm(f.qr)]); if(!o) return;
+    var c0=idx[f.id], est=(c0&&c0.estado)||f.estado; if(est!=='En bodega' && est!=='En ruta') return;
+    var cur=reagDe(f); if(cur && cur.fecha===o.iso) return;
+    var base=(c0&&c0.nota!==undefined)?c0.nota:f.nota, nuevo=notaConReag(base,o.iso,o.motivo);
+    if(c0) c0.nota=nuevo; else { var c1={id:f.id,nota:nuevo}; cambios.push(c1); idx[f.id]=c1; } n++;
+  });
+  return n;
+}
+function autoReag(){
+  if(!filas.length) return;
+  var ck=claveOps(), q=ck?('&clave='+encodeURIComponent(ck)):'';
+  fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).then(function(rows){
+    var cam=[]; if(reagDesdeOps(arr(rows),cam)) guardar(cam);
+  }).catch(function(){});
+}
+
 $('btn-recargar').onclick=function(){ cargar().then(function(){ toast('Recargado'); }); };
 var opsInfo = {};   // id del bulto -> {estado, fecha, intentos}
 function fechaOrd(f){ var m=/^(\d{1,2})-(\d{1,2})-(\d{4})/.exec(String(f||'')); return m ? (m[3]+('0'+m[2]).slice(-2)+('0'+m[1]).slice(-2)) : '00000000'; }
@@ -466,12 +623,73 @@ $('btn-sync').onclick=function(){
       if(o.estado==='entregado'){ cambios.push({id:f.id,estado:'Entregado'}); c.ent++; }
       else if(o.estado==='devuelto'){ cambios.push({id:f.id,estado:'Devuelto'}); c.dev++; }
       else if(o.estado==='pendiente' && f.estado==='En bodega'){ cambios.push({id:f.id,estado:'En ruta'}); c.ruta++; }
-      else if(o.estado==='retorno' && f.estado==='En ruta'){ cambios.push({id:f.id,estado:'En bodega'}); c.vuelta++; }
+      else if(o.estado==='retorno' && f.estado==='En ruta' && (f.nota||'').indexOf('Ruta '+hoyD)!==0){ cambios.push({id:f.id,estado:'En bodega'}); c.vuelta++; }
     });
-    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Sin movimientos en la OPS: '+c.sin+'.';
+    var nReag=reagDesdeOps(arr(res[0]),cambios);
+    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Sin movimientos en la OPS: '+c.sin+'.';
     if(!cambios.length){ out.textContent='Sin cambios de estado. '+msg; pintar(); pintarLista(); return; }
     guardar(cambios).then(function(){ out.textContent=msg; pintarLista(); });
   }).catch(function(){ out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
+};
+
+// ===== Cargar rutas del día (Excel de Luchín y Cristian) =====
+$('btn-ruta').onclick=function(){ if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; } $('file-ruta').click(); };
+function uniq(a){ return a.filter(function(x,i){return a.indexOf(x)===i;}); }
+function leerExcelRuta(file){
+  return new Promise(function(ok,mal){
+    var fr=new FileReader(); fr.onerror=function(){ mal(new Error('No pude leer '+file.name)); };
+    fr.onload=function(){
+      try{
+        var wb=XLSX.read(new Uint8Array(fr.result),{type:'array'}), out=[];
+        var m=/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/.exec(file.name), fecha=hoy().slice(0,10);
+        if(m){ var y=m[3].length===2?'20'+m[3]:m[3]; fecha=('0'+m[1]).slice(-2)+'-'+('0'+m[2]).slice(-2)+'-'+y; }
+        wb.SheetNames.forEach(function(sn){
+          var n=norm(sn).replace(/\s+/g,' '); var opHoja = n.indexOf('LUCHIN')===0 ? 'Luchín' : n.indexOf('CRISTIAN')===0 ? 'Cristian' : n.indexOf('QUEDA ABAJO')===0 ? '' : null;
+          if(opHoja===null) return;
+          var data=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}), h=-1, ix={};
+          for(var i=0;i<Math.min(data.length,10);i++){ if(data[i].some(function(c){return norm(c)==='FOLIO';})){ h=i; data[i].forEach(function(c,j){ ix[norm(c)]=j; }); break; } }
+          if(h<0) return;
+          for(var r=h+1;r<data.length;r++){
+            var row=data[r], fo=String(row[ix['FOLIO']]==null?'':row[ix['FOLIO']]).trim(); if(!fo) continue;
+            var des=norm(row[ix['DESIGNACION']]), op=opHoja;
+            if(des==='L'||des.indexOf('LUCHIN')===0) op='Luchín'; else if(des==='C'||des.indexOf('CRISTIAN')===0) op='Cristian';
+            if(!op) op=/LUCHIN/i.test(file.name)?'Luchín':'Cristian';
+            out.push({folio:fo, mb:String(row[ix['MB']]==null?'':row[ix['MB']]).trim(), n:String(row[ix['N°']]==null?'':row[ix['N°']]).trim(), op:op, fecha:fecha});
+          }
+        });
+        ok(out);
+      }catch(e){ mal(e); }
+    };
+    fr.readAsArrayBuffer(file);
+  });
+}
+$('file-ruta').onchange=function(){
+  var fs=[].slice.call(this.files||[]); this.value=''; if(!fs.length) return;
+  var out=$('ruta-res'); out.textContent='Leyendo los Excel…';
+  Promise.all(fs.map(leerExcelRuta)).then(function(l){
+    var filasRuta=[].concat.apply([],l);
+    if(!filasRuta.length){ out.textContent='No encontré pestañas «Luchin» o «Cristian» con folios en esos archivos.'; return; }
+    var porFolio={}; filas.forEach(function(f){ (porFolio[norm(f.folio)]=porFolio[norm(f.folio)]||[]).push(f); });
+    var usados={}, cambios=[], cuenta={}, noEnc=[], yaSalio=0, sinCambio=0;
+    filasRuta.forEach(function(r){
+      var cand=porFolio[norm(r.folio)]||[], f=null, mm=/^(\d+)\s*\/\s*(\d+)$/.exec(r.mb);
+      if(mm) f=porId[r.folio+'|'+mm[1]+' de '+mm[2]] || cand.filter(function(x){return norm(x.bulto)===(mm[1]+' DE '+mm[2]);})[0] || null;
+      if(!f || usados[f.id]) f=cand.filter(function(x){return !usados[x.id];})[0]||null;
+      if(!f){ noEnc.push(r.folio); return; }
+      usados[f.id]=1;
+      if(f.estado==='Entregado'||f.estado==='Devuelto'){ yaSalio++; return; }
+      var nota='Ruta '+r.fecha+' · '+r.op+' · parada '+(r.n||'?');
+      var vieja=(f.nota||'').trim(); if(vieja && vieja.indexOf('Ruta ')!==0) nota=vieja+' | '+nota;
+      if(f.estado==='En ruta' && (f.nota||'')===nota){ sinCambio++; return; }
+      cambios.push({id:f.id,estado:'En ruta',nota:nota}); cuenta[r.op]=(cuenta[r.op]||0)+1;
+    });
+    var det=Object.keys(cuenta).map(function(k){return k+': '+cuenta[k]+' bultos';}).join(' · ')||'ningún bulto nuevo';
+    var extra=(noEnc.length?' · Filas del Excel sin bulto en el inventario: '+noEnc.length+' (folios: '+uniq(noEnc).slice(0,5).join(', ')+(uniq(noEnc).length>5?'…':'')+')':'')+(yaSalio?' · Ya figuraban entregados/devueltos: '+yaSalio:'')+(sinCambio?' · Ya estaban en ruta: '+sinCambio:'');
+    if(!cambios.length){ out.textContent='No hay cambios que hacer. '+det+extra; return; }
+    if(!confirm('Voy a marcar En ruta → '+det+extra+'\n\n¿Confirmas?')){ out.textContent='Cancelado, no se cambió nada.'; return; }
+    out.textContent='Guardando…';
+    guardar(cambios).then(function(){ out.textContent='Listo. En ruta → '+det+extra+'.'; pintar(); });
+  }).catch(function(e){ out.textContent='No pude leer el Excel: '+(e&&e.message||e); });
 };
 
 // ===== Fotos de etiquetas -> carpeta de Drive (no se guardan en la galería) =====
@@ -501,7 +719,8 @@ $('btn-captura').onclick=function(){
   }).catch(function(){ out.style.color='#b91c1c'; out.textContent='Sin conexión: la foto no se guardó. Intenta de nuevo.'; });
 };
 
-cargar();
+$('f-estado').value='pend';
+cargar().then(autoReag);
 </script>
 </body>
 </html>
