@@ -56,6 +56,12 @@
   .cal-d{min-height:54px;border:1px solid var(--borde);border-radius:8px;background:#fff;padding:4px;font-size:.78rem;cursor:pointer;}
   .cal-d.hoy{border-color:var(--azul2);box-shadow:inset 0 0 0 1px var(--azul2);} .cal-d.sel{background:#ede9fe;border-color:#7c3aed;}
   .cal-n{display:inline-block;margin-top:3px;background:#7c3aed;color:#fff;border-radius:99px;font-size:.66rem;font-weight:800;padding:1px 7px;} .cal-n.venc{background:#b91c1c;}
+  .acciones{position:sticky;top:88px;z-index:98;background:#fff;border-bottom:1px solid var(--borde);display:flex;gap:6px;padding:6px 12px;box-shadow:0 2px 6px rgba(0,0,0,.06);}
+  .acciones .btn{flex:1;padding:9px 6px;font-size:.8rem;white-space:nowrap;} .acciones .btn.mini{flex:0 0 44px;}
+  .pagnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;} .pagnav span{font-size:.8rem;color:#64748b;font-weight:600;}
+  .pagnav .btn{padding:9px 16px;} .pagnav .btn[disabled]{opacity:.35;}
+  .pagfija{position:sticky;bottom:0;background:#f4f7fb;padding:8px 0;margin:0;border-top:1px solid var(--borde);z-index:90;}
+  .kpis{grid-template-columns:repeat(4,1fr) !important;gap:6px !important;} .kpi{padding:8px 4px !important;} .kpi b{font-size:1.25rem !important;} .kpi small{font-size:.6rem !important;line-height:1.1;display:block;}
   table{width:100%;border-collapse:collapse;font-size:.82rem;} td,th{padding:6px 4px;border-bottom:1px solid var(--borde);text-align:left;} td.n,th.n{text-align:right;}
 </style>
 </head>
@@ -69,6 +75,12 @@
   <div class="tab" data-t="faltan">Faltan</div>
   <div class="tab" data-t="calendario">Calendario</div>
 </div>
+<div class="acciones" id="acciones">
+  <button class="btn" id="btn-sync">🔄 Sincronizar OPS</button>
+  <button class="btn sec" id="btn-ruta">🚚 Cargar rutas</button>
+  <button class="btn sec mini" id="btn-recargar" title="Recargar">⟳</button>
+  <input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
+</div>
 
 <div class="wrap">
   <div id="msg"></div>
@@ -78,11 +90,7 @@
     <div class="kpis" id="kpis"></div>
     <div id="tarj-ord"></div>
     <div class="card"><h3>Avance de verificación</h3><div id="avance"></div></div>
-    <div class="card"><h3>Rutas del día (Luchín y Cristian)</h3>
-      <div style="font-size:.8rem;color:#64748b;margin-bottom:8px;">Elige los 2 Excel de la ruta. Las órdenes que estén en las pestañas «Luchin» y «Cristian» pasan a <b>En ruta</b>, con el nombre del operativo.</div>
-      <button class="btn" id="btn-ruta">Cargar rutas (Excel)</button><input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
-      <div id="ruta-res" style="font-size:.82rem;color:#475569;margin-top:8px;"></div></div>
-    <div class="card"><div class="fila"><button class="btn sec" id="btn-sync">Sincronizar con la OPS</button><button class="btn sec" id="btn-recargar">Recargar</button></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin-top:8px;"></div></div>
+    <div id="ruta-res" style="font-size:.8rem;color:#475569;margin:0 4px 6px;"></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin:0 4px 8px;"></div>
     <div class="card"><h3>Por entregar, por comuna</h3><div id="por-comuna"></div></div>
     <div class="card"><h3>Por entregar, por marca</h3><div id="por-marca"></div></div>
   </div>
@@ -224,6 +232,14 @@ function porComunaOrd(lista){
   return Object.keys(m).sort(function(a,b){return m[b].length-m[a].length;}).map(function(c){return {comuna:c,ords:m[c]};});
 }
 function togTarj(k){ abTarj[k]=!abTarj[k]; pintarTarjOrd(); }
+var pgs={};
+function encK(k){ return encodeURIComponent(k).replace(/'/g,'%27'); }
+function pgSlice(key,a,size){ var n=Math.max(1,Math.ceil(a.length/size)); var p=Math.min(Math.max(pgs[key]||0,0),n-1); pgs[key]=p; return a.slice(p*size,p*size+size); }
+function irPg(key,n){ pgs[key]=n; pintar(); }
+function pagNav(key,total,size,fija){
+  var n=Math.max(1,Math.ceil(total/size)); if(n<=1) return ''; var p=Math.min(pgs[key]||0,n-1), k=encK(key);
+  return '<div class="pagnav'+(fija?' pagfija':'')+'"><button class="btn" '+(p?'':'disabled')+' onclick="irPg(decodeURIComponent(\''+k+'\'),'+(p-1)+')">← Anterior</button><span>'+(p+1)+' de '+n+'</span><button class="btn" '+(p>=n-1?'disabled':'')+' onclick="irPg(decodeURIComponent(\''+k+'\'),'+(p+1)+')">Siguiente →</button></div>';
+}
 function togCom(k,c){ var kk=k+'|'+c; abCom[kk]=!abCom[kk]; pintarTarjOrd(); }
 function ordHtml(o,modo){
   var tot=o.bultos.length;
@@ -268,7 +284,7 @@ function bloqueOrd(k,titulo,color,lista,notaExtra){
       var kk=k+'|'+gr.comuna, ab=!!abCom[kk], nbg=0; gr.ords.forEach(function(o){nbg+= (k==='bod') ? o.bultos.filter(function(x){return x.estado==='En bodega';}).length : o.bultos.length;});
       h+='<div onclick="togCom(\''+k+'\',decodeURIComponent(\''+encodeURIComponent(gr.comuna)+'\'))" style="display:flex;justify-content:space-between;padding:10px 4px;border-top:1px solid #e5eaf2;cursor:pointer;font-weight:600;font-size:.9rem;">'+
          '<span>'+(ab?'▾':'▸')+' '+esc(gr.comuna)+'</span><span style="color:#64748b;font-weight:500;">'+gr.ords.length+' órdenes · '+nbg+' bultos</span></div>';
-      if(ab) h+=gr.ords.map(function(o){return ordHtml(o,k);}).join('');
+      if(ab){ var pk='o|'+kk; h+=pgSlice(pk,gr.ords,6).map(function(o){return ordHtml(o,k);}).join('')+pagNav(pk,gr.ords.length,6); }
     });
     h+='</div>';
   }
@@ -289,7 +305,7 @@ function bloqueRuta(){
     ks.forEach(function(k){
       var kk='rut|'+k, abr=!!abCom[kk], nbg=0; g[k].forEach(function(o){ nbg+=o.bultos.filter(function(x){return x.estado==='En ruta';}).length; });
       h+='<div onclick="togCom(\'rut\',decodeURIComponent(\''+encodeURIComponent(k)+'\'))" style="display:flex;justify-content:space-between;padding:10px 4px;border-top:1px solid #e5eaf2;cursor:pointer;font-weight:600;font-size:.9rem;"><span>'+(abr?'▾':'▸')+' '+esc(k)+'</span><span style="color:#64748b;font-weight:500;">'+g[k].length+' órdenes · '+nbg+' bultos</span></div>';
-      if(abr) h+=g[k].map(function(o){return ordHtml(o,'rut');}).join('');
+      if(abr){ var pk2='r|'+kk; h+=pgSlice(pk2,g[k],6).map(function(o){return ordHtml(o,'rut');}).join('')+pagNav(pk2,g[k].length,6); }
     });
     h+='</div>';
   }
@@ -342,7 +358,7 @@ function armarFiltros(){
   }
   llenar('f-comuna','comuna','Todas las comunas'); llenar('f-b2b','b2b','Todas las marcas');
 }
-var pag=0, TOPE=50;
+var pag=0, TOPE=12;
 ['q','f-estado','f-ver','f-comuna','f-b2b'].forEach(function(id){ $(id).addEventListener('input',function(){ pag=0; pintarLista(); }); });
 function irPag(n){ pag=n; pintarLista(); window.scrollTo(0,0); }
 function pintarLista(){
@@ -355,11 +371,11 @@ function pintarLista(){
   });
   var paginas=Math.max(1,Math.ceil(r.length/TOPE)); if(pag>=paginas) pag=paginas-1; if(pag<0) pag=0;
   var ini=pag*TOPE, fin=Math.min(r.length,ini+TOPE);
-  var nav = paginas>1 ? '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;">'+
+  var nav = paginas>1 ? '<div class="pagnav pagfija">'+
     '<button class="btn" '+(pag===0?'disabled':'')+' onclick="irPag('+(pag-1)+')">← Anterior</button>'+
-    '<span style="font-size:.82rem;color:#64748b;">Página '+(pag+1)+' de '+paginas+'</span>'+
+    '<span>'+(pag+1)+' de '+paginas+'</span>'+
     '<button class="btn" '+(pag>=paginas-1?'disabled':'')+' onclick="irPag('+(pag+1)+')">Siguiente →</button></div>' : '';
-  $('lista').innerHTML = '<div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+r.length+' bultos'+(r.length?' · mostrando '+(ini+1)+' a '+fin:'')+'</div>'+nav+
+  $('lista').innerHTML = '<div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+r.length+' bultos'+(r.length?' · mostrando '+(ini+1)+' a '+fin:'')+'</div>'+
     r.slice(ini,fin).map(function(f){ return tarjeta(f); }).join('')+nav;
   document.querySelectorAll('#lista .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
 }
@@ -434,10 +450,14 @@ function pintarCalendario(){
   var con = fechas.filter(function(x){ return (g[x]||[]).length; });
   h+='<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;">'+(calSel?'Reagendadas para '+fechaTxt(calSel):'Todas las órdenes reagendadas')+'</div>';
   if(!con.length) h+='<div class="card" style="font-size:.85rem;color:#64748b;">'+(calSel?'No hay órdenes reagendadas para ese día.':'No hay órdenes reagendadas. Para reagendar una, ábrela desde Lista o Resumen y presiona «📅 Reagendar».')+'</div>';
-  con.forEach(function(fe){
-    h+='<div style="font-size:.78rem;font-weight:700;color:'+(fe<hoyIso?'#b91c1c':'#6b21a8')+';margin:10px 4px 4px;">📅 '+fechaTxt(fe)+(fe<hoyIso?' · fecha vencida':'')+' · '+g[fe].length+' orden'+(g[fe].length===1?'':'es')+'</div>';
-    g[fe].forEach(function(o){ h+=cardOps(o.bultos[0],{tot:o.bultos.length})+'<div style="margin:-2px 0 8px;"><button class="btn sec chico" data-reag="'+esc(o.folio)+'">Cambiar fecha o quitar</button></div>'; });
+  var flat=[]; con.forEach(function(fe){ g[fe].forEach(function(o){ flat.push({fe:fe,o:o}); }); });
+  var ult='';
+  pgSlice('cal',flat,6).forEach(function(x){
+    var fe=x.fe, o=x.o;
+    if(fe!==ult){ ult=fe; h+='<div style="font-size:.78rem;font-weight:700;color:'+(fe<hoyIso?'#b91c1c':'#6b21a8')+';margin:10px 4px 4px;">📅 '+fechaTxt(fe)+(fe<hoyIso?' · fecha vencida':'')+' · '+g[fe].length+' orden'+(g[fe].length===1?'':'es')+'</div>'; }
+    h+=cardOps(o.bultos[0],{tot:o.bultos.length})+'<div style="margin:-2px 0 8px;"><button class="btn sec chico" data-reag="'+esc(o.folio)+'">Cambiar fecha o quitar</button></div>';
   });
+  h+=pagNav('cal',flat.length,6,true);
   $('calendario').innerHTML=h;
   $('cal-prev').onclick=function(){ calIr(-1); }; $('cal-next').onclick=function(){ calIr(1); }; $('cal-hoy').onclick=calHoy;
   if($('cal-todas')) $('cal-todas').onclick=function(){ calSel=''; pintarCalendario(); };
@@ -548,11 +568,12 @@ function pintarFaltan(){
     if(total>1 && (faltanCarga.length || (algunoVer && sinVer.length))) out.push({a:a,faltanCarga:faltanCarga,sinVer:sinVer});
   });
   var dup='<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;">Posibles duplicados</div>'+duplicadosHtml()+'<div style="font-size:.85rem;font-weight:700;margin:12px 4px 6px;">Bultos que faltan</div>';
-  $('faltan').innerHTML = dup + (out.length ? out.map(function(o){ var f=o.a[0];
+  var pgF=pgSlice('faltan',out,6);
+  $('faltan').innerHTML = dup + (out.length ? pgF.map(function(o){ var f=o.a[0];
     return '<div class="card it" data-id="'+esc(f.id)+'"><div class="n">'+esc(f.nombre)+'</div><div class="d">'+esc(f.direccion)+'</div><div class="m">'+esc(f.b2b)+' · '+esc(f.folio)+'</div>'+
       (o.faltanCarga.length?'<div style="font-size:.82rem;color:#b91c1c;margin-top:6px;">Bultos que nunca entraron al registro: '+o.faltanCarga.join(', ')+'</div>':'')+
       (o.sinVer.length?'<div style="font-size:.82rem;color:#b45309;margin-top:4px;">Registrados pero sin ver en físico: '+o.sinVer.join(', ')+'</div>':'')+'</div>'; }).join('')
-    : '<div class="card">No hay órdenes con bultos faltantes.</div>');
+    : '<div class="card">No hay órdenes con bultos faltantes.</div>') + pagNav('faltan',out.length,6,true);
   document.querySelectorAll('#faltan .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
 }
 
@@ -595,14 +616,16 @@ function textoOps(f){
   var t={entregado:'Entregado',retorno:'Retorno (no se pudo entregar)',devuelto:'Devuelto a Alas',daniado:'Dañado',pendiente:'En ruta hoy'}[o.estado]||o.estado;
   return 'OPS: '+t+(o.fecha?' · '+o.fecha:'')+(o.intentos?' · '+o.intentos+' intento'+(o.intentos==1?'':'s'):'');
 }
-$('btn-sync').onclick=function(){
-  var ck=claveOps(); var out=$('sync-res'); out.textContent='Consultando la OPS (hoy y todo el historial)…';
+var sincBusy=false;
+function sincOps(auto){
+  if(sincBusy) return; sincBusy=true;
+  var ck=claveOps(); var out=$('sync-res'); if(!auto) out.textContent='Consultando la OPS (hoy y todo el historial)…';
   var q=ck?('&clave='+encodeURIComponent(ck)):'';
   Promise.all([
     fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).catch(function(){return null;}),
     fetch(OPS_URL+'?tipo=detalle_historico'+q).then(function(r){return r.json();}).catch(function(){return null;})
   ]).then(function(res){
-    if(!res[0] && !res[1]){ out.textContent='No pude leer la OPS. Intenta de nuevo.'; return; }
+    if(!res[0] && !res[1]){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; return; }
     var mapa={};
     function poner(claves, estado, fecha, intentos){
       claves.forEach(function(k){
@@ -625,12 +648,30 @@ $('btn-sync').onclick=function(){
       else if(o.estado==='pendiente' && f.estado==='En bodega'){ cambios.push({id:f.id,estado:'En ruta'}); c.ruta++; }
       else if(o.estado==='retorno' && f.estado==='En ruta' && (f.nota||'').indexOf('Ruta '+hoyD)!==0){ cambios.push({id:f.id,estado:'En bodega'}); c.vuelta++; }
     });
+    // Órdenes que están en la OPS y todavía no existen en el inventario: se registran solas
+    var existe={}; filas.forEach(function(f){ existe[norm(f.folio)]=1; if(f.qr) existe[norm(f.qr)]=1; });
+    var gOps={}, ordenF=[]; arr(res[0]).slice(1).forEach(function(r){
+      if(!r || r[18]===true || r[18]==='TRUE') return; var fo=String(r[2]||r[1]||'').trim(); if(!fo || existe[norm(fo)] || existe[norm(r[1])]) return;
+      if(!gOps[fo]){ gOps[fo]=[]; ordenF.push(fo); } gOps[fo].push(r);
+    });
+    var nNuevas=0;
+    ordenF.forEach(function(fo){
+      var g=gOps[fo]; g.forEach(function(r,i){
+        var e=String(r[11]||'').toLowerCase().trim(), est=e==='entregado'?'Entregado':e==='devuelto'?'Devuelto':e==='retorno'?'En bodega':'En ruta';
+        var bul=(i+1)+' de '+g.length;
+        cambios.push({id:fo+'|'+bul, folio:fo, b2b:String(r[10]||''), nombre:String(r[4]||''), telefono:String(r[5]||''), direccion:String(r[6]||''), comuna:String(r[7]||''), bulto:bul, qr:'', estado:est, verificado:'no', nota:'Registrada desde la OPS'});
+        nNuevas++;
+      });
+    });
     var nReag=reagDesdeOps(arr(res[0]),cambios);
-    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Sin movimientos en la OPS: '+c.sin+'.';
-    if(!cambios.length){ out.textContent='Sin cambios de estado. '+msg; pintar(); pintarLista(); return; }
-    guardar(cambios).then(function(){ out.textContent=msg; pintarLista(); });
-  }).catch(function(){ out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
-};
+    var msg='Listo. Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Sin movimientos en la OPS: '+c.sin+'.';
+    if(!cambios.length){ out.textContent='Sin cambios. '+msg; pintar(); pintarLista(); sincBusy=false; return; }
+    guardar(cambios).then(function(){ out.textContent=msg; if(nNuevas) return cargar(); pintarLista(); }).then(function(){ sincBusy=false; });
+  }).catch(function(){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
+}
+$('btn-sync').onclick=function(){ sincOps(false); };
+// Cada 2 minutos, con la página abierta, revisa la OPS y registra lo nuevo
+setInterval(function(){ if(!document.hidden && filas.length) sincOps(true); },120000);
 
 // ===== Cargar rutas del día (Excel de Luchín y Cristian) =====
 $('btn-ruta').onclick=function(){ if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; } $('file-ruta').click(); };
@@ -720,7 +761,7 @@ $('btn-captura').onclick=function(){
 };
 
 $('f-estado').value='pend';
-cargar().then(autoReag);
+cargar().then(function(){ sincOps(true); });
 </script>
 </body>
 </html>
