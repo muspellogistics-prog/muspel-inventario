@@ -636,10 +636,22 @@ function textoOps(f){
   var t={entregado:'Entregado',retorno:'Retorno (no se pudo entregar)',devuelto:'Devuelto a Alas',daniado:'Dañado',pendiente:'En ruta hoy'}[o.estado]||o.estado;
   return 'OPS: '+t+(o.fecha?' · '+o.fecha:'')+(o.intentos?' · '+o.intentos+' intento'+(o.intentos==1?'':'s'):'');
 }
-var sincBusy=false;
+var sincBusy=false, sincT=0;
+function busy(auto){
+  if(sincBusy && Date.now()-sincT<120000){ if(!auto) prog('⏳ Todavía está trabajando la sincronización anterior. Espera unos segundos y vuelve a tocar.',5000); return true; }
+  sincBusy=true; sincT=Date.now(); return false;
+}
+function prog(txt,ms){
+  var e=$('prog'); if(!e){ e=document.createElement('div'); e.id='prog'; e.style.cssText='position:fixed;left:10px;right:10px;bottom:12px;z-index:60;background:#0f172a;color:#fff;border-radius:12px;padding:12px 14px;font-size:.88rem;box-shadow:0 6px 20px rgba(0,0,0,.35);line-height:1.35;'; e.onclick=function(){ e.style.display='none'; }; document.body.appendChild(e); }
+  e.textContent=txt; e.style.display='block'; clearTimeout(prog._t); if(ms) prog._t=setTimeout(function(){ e.style.display='none'; },ms);
+}
+function salida(auto){
+  var base=$('sync-res');
+  return { get textContent(){ return base.textContent; }, set textContent(v){ base.textContent=v; if(!auto) prog(v, /^(Listo|Sin cambios|No pude|El inventario ya|Se cortó)/.test(v)?20000:0); } };
+}
 function sincOps(auto){
-  if(sincBusy) return; sincBusy=true;
-  var ck=claveOps(); var out=$('sync-res'); if(!auto) out.textContent='Consultando la OPS (hoy y todo el historial)…';
+  if(busy(auto)) return;
+  var ck=claveOps(); var out=salida(auto); if(!auto) out.textContent='Consultando la OPS (hoy y todo el historial)…';
   var q=ck?('&clave='+encodeURIComponent(ck)):'';
   Promise.all([
     fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).catch(function(){return null;}),
@@ -708,8 +720,8 @@ $('btn-sync').onclick=function(){ sincOps(false); };
 
 // ===== Traer TODAS las órdenes del mes (historial cerrado + lo de hoy) =====
 function importarMes(){
-  if(sincBusy) return; sincBusy=true;
-  var out=$('sync-res'); out.textContent='Leyendo todo el mes desde la OPS… (puede tardar un poquito)';
+  if(busy(false)) return;
+  var out=salida(false); out.textContent='Leyendo todo el mes desde la OPS… (puede tardar un poquito)';
   var ck=claveOps(), q=ck?('&clave='+encodeURIComponent(ck)):'';
   var d0=new Date(), mm=('0'+(d0.getMonth()+1)).slice(-2), yy=String(d0.getFullYear()), hoyD=hoy().slice(0,10);
   var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -765,7 +777,7 @@ function importarMes(){
         sincBusy=false;
         out.textContent=fallo ? ('Se cortó a mitad de camino (se guardaron '+hechos+' de '+nuevas.length+'). Toca de nuevo "Traer el mes" para seguir.') : ('Listo. Agregué '+(hechos-anot.length)+' bultos de '+MESES[d0.getMonth()]+' · Entregados: '+c.ent+' · Devueltos: '+c.dev+' · En bodega: '+c.bod+' · En ruta: '+c.ruta+' · Operativo anotado en otros '+anot.length+'.');
         if(!fallo) msgExtra=out.textContent;
-        cargar().then(function(){ sincOps(true); }); return;
+        cargar().then(function(){ sincOps(false); }); return;
       }
       out.textContent='Guardando '+Math.min((k+1)*100,nuevas.length)+' de '+nuevas.length+'…';
       llamar({accion:'guardar',filas:lotes[k]}).then(function(j){ if(j.status!=='ok'){ fallo=true; } else hechos+=lotes[k].length; sig(k+1); }).catch(function(){ fallo=true; sig(k+1); });
