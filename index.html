@@ -79,8 +79,10 @@
   <button class="btn" id="btn-sync">🔄 Sincronizar OPS</button>
   <button class="btn sec" id="btn-ruta">🚚 Cargar rutas</button>
   <button class="btn sec" id="btn-mes">📥 Traer el mes</button>
+  <button class="btn sec" id="btn-pend">📋 Cargar pendientes</button>
   <button class="btn sec mini" id="btn-recargar" title="Recargar">⟳</button>
   <input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
+  <input type="file" id="file-pend" accept=".xlsx,.xls" style="display:none;">
 </div>
 
 <div class="wrap">
@@ -846,6 +848,71 @@ $('file-ruta').onchange=function(){
     out.textContent='Guardando…';
     guardar(cambios).then(function(){ out.textContent='Listo. En ruta → '+det+extra+'.'; pintar(); });
   }).catch(function(e){ out.textContent='No pude leer el Excel: '+(e&&e.message||e); });
+};
+
+// ===== Cargar pendientes desde el Excel de ruta (pestañas «Priori…» y «J05 y J06») =====
+$('btn-pend').onclick=function(){ if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; } $('file-pend').click(); };
+$('file-pend').onchange=function(){
+  var file=(this.files||[])[0]; this.value=''; if(!file) return;
+  if(busy(false)) return;
+  var out=salida(false); out.textContent='Leyendo el Excel…';
+  var fr=new FileReader();
+  fr.onerror=function(){ sincBusy=false; out.textContent='No pude leer el Excel.'; };
+  fr.onload=function(){
+    try{
+      var wb=XLSX.read(new Uint8Array(fr.result),{type:'array'});
+      var hojas=wb.SheetNames.filter(function(sn){ var n=norm(sn).replace(/\s+/g,' '); return n.indexOf('PRIORI')===0 || n.indexOf('J05')===0; });
+      if(!hojas.length){ sincBusy=false; out.textContent='No encontré pestañas «Priori…» ni «J05 y J06» en ese Excel.'; return; }
+      var mf=/(\d{1,2})[.\-_](\d{1,2})[.\-_](\d{2,4})/.exec(file.name), fecha=hoy().slice(0,10);
+      if(mf){ var yy=mf[3].length===2?'20'+mf[3]:mf[3]; fecha=('0'+mf[1]).slice(-2)+'-'+('0'+mf[2]).slice(-2)+'-'+yy; }
+      var porF={}, orden=[], porHoja=[];
+      hojas.forEach(function(sn){
+        var data=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}), h=-1, ix={};
+        for(var i=0;i<Math.min(data.length,10);i++){ if(data[i].some(function(c){return norm(c)==='FOLIO';})){ h=i; data[i].forEach(function(c,j){ ix[norm(c)]=j; }); break; } }
+        if(h<0) return;
+        function v(row,k){ var j=ix[k]; return j===undefined?'':String(row[j]==null?'':row[j]).trim(); }
+        var cuenta={}, info={}, n=0;
+        for(var r=h+1;r<data.length;r++){
+          var row=data[r], fo=v(row,'FOLIO'); if(!fo) continue; n++;
+          cuenta[fo]=(cuenta[fo]||0)+1;
+          if(!info[fo]) info[fo]={folio:fo, b2b:v(row,'B2B'), nombre:v(row,'NOMBRE').replace(/\s+/g,' '), tel:v(row,'TELÉFONO')||v(row,'TELEFONO'), dir:v(row,'DIRECCIÓN')||v(row,'DIRECCION'), comuna:v(row,'COMUNA'), estadoX:v(row,'ESTADO'), entregado:norm(v(row,'ENTREGADO'))};
+        }
+        porHoja.push(sn+': '+n+' filas');
+        Object.keys(info).forEach(function(fo){
+          if(!porF[fo]){ porF[fo]=info[fo]; porF[fo].nb=cuenta[fo]; orden.push(fo); }
+          else { porF[fo].nb=Math.max(porF[fo].nb,cuenta[fo]); if(info[fo].entregado==='SI') porF[fo].entregado='SI'; }   // misma orden en dos pestañas: no se duplica
+        });
+      });
+      var existe={}; filas.forEach(function(f){ existe[norm(f.folio)]=1; if(f.qr) existe[norm(f.qr)]=1; });
+      var nuevas=[], yaEstaba=0, ent=0;
+      orden.forEach(function(fo){
+        var o=porF[fo]; if(existe[norm(fo)]){ yaEstaba++; return; }
+        var esEnt=(o.entregado==='SI') || /ENTREGAD/.test(norm(o.estadoX)) && norm(o.estadoX)!=='NO ENTREGADA';
+        if(esEnt) ent++;
+        for(var i=1;i<=o.nb;i++){
+          var bul=i+' de '+o.nb;
+          nuevas.push({id:fo+'|'+bul, folio:fo, b2b:o.b2b, nombre:o.nombre, telefono:o.tel, direccion:o.dir, comuna:o.comuna.trim(), bulto:bul, qr:'', estado:esEnt?'Entregado':'En bodega', verificado:'no', nota:'Cargada desde Excel de ruta '+fecha+(o.estadoX?' · OPS: '+o.estadoX:'')});
+        }
+      });
+      var total=Object.keys(porF).length;
+      var res='Pestañas leídas: '+porHoja.join(' · ')+'. Órdenes distintas: '+total+' · Ya estaban en el inventario: '+yaEstaba+' · Nuevas: '+(total-yaEstaba)+' ('+nuevas.length+' bultos).';
+      if(!nuevas.length){ sincBusy=false; out.textContent='Sin cambios. '+res; return; }
+      if(!confirm('Voy a agregar '+nuevas.length+' bultos nuevos ('+(total-yaEstaba)+' órdenes) al inventario.\n'+yaEstaba+' órdenes ya estaban y NO se duplican.\n\n¿Confirmas?')){ sincBusy=false; out.textContent='Cancelado, no se cambió nada.'; return; }
+      var lotes=[]; for(var i=0;i<nuevas.length;i+=100) lotes.push(nuevas.slice(i,i+100));
+      var hechos=0, fallo=false;
+      (function sig(k){
+        if(k>=lotes.length || fallo){
+          sincBusy=false;
+          out.textContent=fallo ? ('Se cortó a mitad de camino (se guardaron '+hechos+' de '+nuevas.length+'). Vuelve a cargar el mismo Excel: lo ya guardado no se duplica.') : ('Listo. Agregué '+hechos+' bultos al inventario. '+res);
+          if(!fallo) msgExtra=out.textContent;
+          cargar(); return;
+        }
+        out.textContent='Guardando '+Math.min((k+1)*100,nuevas.length)+' de '+nuevas.length+'…';
+        llamar({accion:'guardar',filas:lotes[k]}).then(function(j){ if(j.status!=='ok'){ fallo=true; } else hechos+=lotes[k].length; sig(k+1); }).catch(function(){ fallo=true; sig(k+1); });
+      })(0);
+    }catch(e){ sincBusy=false; out.textContent='No pude leer el Excel: '+(e&&e.message||e); }
+  };
+  fr.readAsArrayBuffer(file);
 };
 
 // ===== Fotos de etiquetas -> carpeta de Drive (no se guardan en la galería) =====
