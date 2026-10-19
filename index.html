@@ -596,14 +596,17 @@ function noEsDuplicado(gi){
   guardar(g.a.map(function(f){ return {id:f.id, nota:((f.nota||'')+' no es duplicado').trim()}; })).then(function(){ toast('Listo, ya no se marca'); pintarFaltan(); });
 }
 function pintarFaltan(){
-  var g={}; filas.filter(pendiente).forEach(function(f){ (g[f.folio]=g[f.folio]||[]).push(f); });
+  // Se cuentan TODOS los bultos de la orden (entregados también), para no marcar como faltante uno que ya salió
+  function baseF(fo){ return String(fo||'').replace(/-\d+\/\d+$/,''); }
+  var todos={}; filas.forEach(function(f){ var k=baseF(f.folio); (todos[k]=todos[k]||[]).push(f); });
+  var g={}; Object.keys(todos).forEach(function(k){ if(todos[k].some(pendiente)) g[k]=todos[k].filter(pendiente); });
   var out=[];
   Object.keys(g).forEach(function(folio){
-    var a=g[folio]; var total=bparse(a[0].bulto)[1];
-    var cargados=a.map(function(x){return bparse(x.bulto)[0];});
+    var a=g[folio]; var all=todos[folio]; var total=Math.max.apply(null,all.map(function(x){return bparse(x.bulto)[1];}));
+    var cargados=all.map(function(x){return bparse(x.bulto)[0];});
     var faltanCarga=[]; for(var i=1;i<=total;i++){ if(cargados.indexOf(i)<0) faltanCarga.push(i+' de '+total); }
-    var sinVer=a.filter(function(x){return x.verificado!=='si';}).map(function(x){return x.bulto;});
-    var algunoVer=a.some(function(x){return x.verificado==='si';});
+    var sinVer=a.filter(function(x){return x.estado==='En bodega' && x.verificado!=='si';}).map(function(x){return x.bulto;});
+    var algunoVer=all.some(function(x){return x.verificado==='si';});
     if(total>1 && (faltanCarga.length || (algunoVer && sinVer.length))) out.push({a:a,faltanCarga:faltanCarga,sinVer:sinVer});
   });
   var dup='<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;">Posibles duplicados</div>'+duplicadosHtml()+'<div style="font-size:.85rem;font-weight:700;margin:12px 4px 6px;">Bultos que faltan</div>';
@@ -710,6 +713,8 @@ function sincOps(auto){
     fetch(OPS_URL+'?tipo=asignaciones'+q).then(function(r){return r.json();}).catch(function(){return null;})
   ]).then(function(res){
     if(!res[0] && !res[1]){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; return; }
+    var rechazo=[res[0],res[1]].filter(function(x){ return x && !Array.isArray(x) && x.status==='error'; })[0];
+    if(rechazo && !Array.isArray(res[0]) && !Array.isArray(res[1])){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS: rechazó la clave ('+(rechazo.codigo||'sin permiso')+'). Abre una vez la OPS con tu link personal en este mismo celular y vuelve a sincronizar.'; return; }
     var mapa={};
     function poner(claves, estado, fecha, intentos){
       claves.forEach(function(k){
