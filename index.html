@@ -469,12 +469,13 @@ function abrirFicha(id){
     (otros.length?'<div style="font-size:.8rem;margin-bottom:6px;">Otros bultos de esta orden: '+otros.map(function(o){return esc(o.bulto)+' ('+(o.verificado==='si'?'verificado':'sin verificar')+')';}).join(', ')+'</div>':'')+
     '<div style="margin:8px 0;">'+badges(f)+'</div>'+(textoOps(f)?'<div style="font-size:.8rem;color:#475569;margin-bottom:6px;">'+esc(textoOps(f))+'</div>':'')+
     '<label style="font-size:.8rem;color:#64748b;">Estado</label><select id="m-estado">'+ESTADOS.map(function(e){return '<option'+(e===f.estado?' selected':'')+'>'+e+'</option>';}).join('')+'</select>'+
+    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Folio (corrígelo aquí si la etiqueta no se leía bien)</label><input id="m-folio" value="'+esc(f.folio)+'">'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Ubicación</label><input id="m-ubic" value="'+esc(f.ubicacion)+'">'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Nota</label><input id="m-nota" value="'+esc(f.nota)+'">'+
     '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="m-ok">Guardar</button><button class="btn" id="m-reag" style="background:#7c3aed;">📅 Reagendar</button>'+
     (f.verificado==='si'?'<button class="btn sec" id="m-nover">Quitar verificado</button>':'<button class="btn" id="m-ver">Marcar verificado</button>')+
     '<button class="btn sec" id="m-x">Cerrar</button></div>');
-  function base(){ return {id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; }
+  function base(){ var c={id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; var nf=$('m-folio').value.trim(); if(nf && nf!==f.folio) c.folio=nf; return c; }
   $('m-ok').onclick=function(){ guardar([base()]); cerrarModal(); toast('Guardado'); };
   if($('m-ver')) $('m-ver').onclick=function(){ var c=base(); c.verificado='si'; c.fechaVerif=hoy(); guardar([c]); cerrarModal(); toast('Verificado'); };
   if($('m-nover')) $('m-nover').onclick=function(){ var c=base(); c.verificado='no'; c.fechaVerif=''; guardar([c]); cerrarModal(); };
