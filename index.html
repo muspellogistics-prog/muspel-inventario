@@ -221,7 +221,8 @@ function mesDe(f){
 }
 function mesActual(){ return isoHoy().slice(0,7); }
 function esHistorial(f){ if(f.estado!=='Entregado' && f.estado!=='Devuelto') return false; var m=mesDe(f); return !!m && m<mesActual(); }
-function reaplicar(){ filas=[]; historial=[]; todas.forEach(function(f){ (esHistorial(f)?historial:filas).push(f); }); }
+function esDup(f){ return /(^|\|\s*)DUP:/.test(String(f.nota||'')); }
+function reaplicar(){ filas=[]; historial=[]; todas.forEach(function(f){ if(esDup(f)) return; (esHistorial(f)?historial:filas).push(f); }); }
 function guardar(cambios){
   // cambios: [{id, campo:valor...}] -> se aplica local y se envía
   cambios.forEach(function(c){ var f=porId[c.id]; if(f) for(var k in c) f[k]=c[k]; });
@@ -469,17 +470,18 @@ function abrirFicha(id){
     (otros.length?'<div style="font-size:.8rem;margin-bottom:6px;">Otros bultos de esta orden: '+otros.map(function(o){return esc(o.bulto)+' ('+(o.verificado==='si'?'verificado':'sin verificar')+')';}).join(', ')+'</div>':'')+
     '<div style="margin:8px 0;">'+badges(f)+'</div>'+(textoOps(f)?'<div style="font-size:.8rem;color:#475569;margin-bottom:6px;">'+esc(textoOps(f))+'</div>':'')+
     '<label style="font-size:.8rem;color:#64748b;">Estado</label><select id="m-estado">'+ESTADOS.map(function(e){return '<option'+(e===f.estado?' selected':'')+'>'+e+'</option>';}).join('')+'</select>'+
-    '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Folio (corrígelo aquí si la etiqueta no se leía bien)</label><input id="m-folio" value="'+esc(f.folio)+'">'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Ubicación</label><input id="m-ubic" value="'+esc(f.ubicacion)+'">'+
     '<label style="font-size:.8rem;color:#64748b;display:block;margin-top:8px;">Nota</label><input id="m-nota" value="'+esc(f.nota)+'">'+
     '<div class="fila" style="margin-top:12px;"><button class="btn verde" id="m-ok">Guardar</button><button class="btn" id="m-reag" style="background:#7c3aed;">📅 Reagendar</button>'+
     (f.verificado==='si'?'<button class="btn sec" id="m-nover">Quitar verificado</button>':'<button class="btn" id="m-ver">Marcar verificado</button>')+
-    '<button class="btn sec" id="m-x">Cerrar</button></div>');
-  function base(){ var c={id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; var nf=$('m-folio').value.trim(); if(nf && nf!==f.folio) c.folio=nf; return c; }
+    '<button class="btn sec" id="m-x">Cerrar</button></div>'+
+    '<div style="margin-top:10px;border-top:1px solid #e5eaf2;padding-top:8px;"><button class="btn sec chico" id="m-dup">🙈 Es un duplicado: ocultar este</button><div style="font-size:.7rem;color:#64748b;margin-top:3px;">No se borra nada: deja de contarse y se puede restaurar en Historial.</div></div>');
+  function base(){ return {id:f.id, estado:$('m-estado').value, ubicacion:$('m-ubic').value.trim(), nota:$('m-nota').value.trim()}; }
   $('m-ok').onclick=function(){ guardar([base()]); cerrarModal(); toast('Guardado'); };
   if($('m-ver')) $('m-ver').onclick=function(){ var c=base(); c.verificado='si'; c.fechaVerif=hoy(); guardar([c]); cerrarModal(); toast('Verificado'); };
   if($('m-nover')) $('m-nover').onclick=function(){ var c=base(); c.verificado='no'; c.fechaVerif=''; guardar([c]); cerrarModal(); };
   $('m-x').onclick=cerrarModal;
+  $('m-dup').onclick=function(){ if(!confirm('¿Ocultar este bulto como duplicado? No se borra: se puede restaurar en la pestaña Historial.')) return; var otros=todas.filter(function(x){ return x.folio===f.folio && !esDup(x); }); guardar(otros.map(function(b){ return {id:b.id, nota:((b.nota||'')+' | DUP:'+hoy().slice(0,10)).replace(/^ \| /,'')}; })).then(function(){ toast('Ocultado como duplicado'); }); cerrarModal(); };
   $('m-reag').onclick=function(){ abrirReagendar(f.folio); };
 }
 
@@ -648,10 +650,11 @@ function pintarFaltan(){
     var algunoVer=all.some(function(x){return x.verificado==='si';});
     if(total>1 && (faltanCarga.length || (algunoVer && sinVer.length))) out.push({a:a,faltanCarga:faltanCarga,sinVer:sinVer});
   });
-  var pos=window.__posibles||{}, posK=Object.keys(pos).filter(function(fo){ return filas.some(function(f){ return f.folio===fo && pendiente(f); }); });
+  var pos=window.__posibles||{}, yaF={}; todas.forEach(function(x){ yaF[kf(x.folio)]=1; });
+  var posK=Object.keys(pos).filter(function(fo){ return filas.some(function(f){ return f.folio===fo && pendiente(f); }); });
   var posH=posK.length ? '<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;color:#b45309;">⚠ ¿Ya entregados? La OPS los tiene entregados con otro folio ('+posK.length+')</div>'+posK.slice(0,6).map(function(fo){
       var bs=filas.filter(function(f){ return f.folio===fo && pendiente(f); }), f=bs[0], p=pos[fo];
-      return '<div class="card"><div class="n">'+esc(f.nombre)+'</div><div class="d">'+esc(f.direccion)+'</div><div class="m">Inventario: '+esc(fo)+' · '+esc(f.estado)+'<br>OPS (entregado '+esc(p.f)+'): '+esc(p.fo)+'</div><div class="fila" style="margin-top:8px;"><button class="btn verde chico" data-si="'+esc(fo)+'">Sí, ya fue entregado</button><button class="btn sec chico" data-no="'+esc(fo)+'">No es el mismo pedido</button></div></div>'; }).join('')+(posK.length>6?'<div style="font-size:.78rem;color:#64748b;margin:0 4px 8px;">Y '+(posK.length-6)+' más; resuelve estos y aparecen los siguientes.</div>':'') : '';
+      return '<div class="card"><div class="n">'+esc(f.nombre)+'</div><div class="d">'+esc(f.direccion)+'</div><div class="m">Inventario: '+esc(fo)+' · '+esc(f.estado)+'<br>OPS (entregado '+esc(p.f)+'): '+esc(p.fo)+'</div>'+(yaF[kf(p.fo)]?'<div style="font-size:.78rem;color:#b45309;margin-top:4px;">Ojo: ese folio ya está en el inventario. Si es el mismo pedido, este es un duplicado.</div>':'')+'<div class="fila" style="margin-top:8px;">'+(yaF[kf(p.fo)]?'<button class="btn verde chico" data-dup="'+esc(fo)+'">Es duplicado: ocultar este</button>':'<button class="btn verde chico" data-si="'+esc(fo)+'">Sí, ya fue entregado</button>')+'<button class="btn sec chico" data-no="'+esc(fo)+'">No es el mismo pedido</button></div></div>'; }).join('')+(posK.length>6?'<div style="font-size:.78rem;color:#64748b;margin:0 4px 8px;">Y '+(posK.length-6)+' más; resuelve estos y aparecen los siguientes.</div>':'') : '';
   var dup=posH+'<div style="font-size:.85rem;font-weight:700;margin:4px 4px 6px;">Posibles duplicados</div>'+duplicadosHtml()+'<div style="font-size:.85rem;font-weight:700;margin:12px 4px 6px;">Bultos que faltan</div>';
   var pgF=pgSlice('faltan',out,6);
   $('faltan').innerHTML = dup + (out.length ? pgF.map(function(o){ var f=o.a[0];
@@ -663,6 +666,9 @@ function pintarFaltan(){
   document.querySelectorAll('#faltan [data-si]').forEach(function(e){ e.onclick=function(){ var fo=e.dataset.si, p=(window.__posibles||{})[fo]; if(!p) return;
     var bs=filas.filter(function(f){ return f.folio===fo && pendiente(f); }), d=hoy().slice(0,5);
     guardar(bs.map(function(b){ return {id:b.id, estado:'Entregado', nota:((b.nota||'')+' | Entregada '+(p.f&&p.f!==hoy().slice(0,10)?p.f.slice(0,5):d)+' · confirmado con la OPS (folio '+p.fo+')').replace(/^ \| /,'')}; })).then(function(){ delete window.__posibles[fo]; window.__posiblesById={}; toast('Marcado como entregado'); pintar(); }); }; });
+  document.querySelectorAll('#faltan [data-dup]').forEach(function(e){ e.onclick=function(){ var fo=e.dataset.dup;
+    var bs=todas.filter(function(f){ return f.folio===fo && !esDup(f); });
+    guardar(bs.map(function(b){ return {id:b.id, nota:((b.nota||'')+' | DUP:'+hoy().slice(0,10)).replace(/^ \| /,'')}; })).then(function(){ delete window.__posibles[fo]; window.__posiblesById={}; toast('Ocultado como duplicado'); pintar(); }); }; });
   document.querySelectorAll('#faltan [data-no]').forEach(function(e){ e.onclick=function(){ var fo=e.dataset.no, p=(window.__posibles||{})[fo]; if(!p) return;
     var bs=filas.filter(function(f){ return f.folio===fo && pendiente(f); });
     guardar(bs.map(function(b){ return {id:b.id, nota:((b.nota||'')+' | NOENT:'+kf(p.fo)).replace(/^ \| /,'')}; })).then(function(){ delete window.__posibles[fo]; window.__posiblesById={}; toast('Listo, no se vuelve a proponer'); pintar(); }); }; });
@@ -698,7 +704,10 @@ function pintarHistorial(){
         pgH.map(function(fo){ return ordHtml({folio:fo,bultos:gf[fo]},'ent'); }).join('')+pagNav('hist',ord.length,6,true);
     }
   });
+  var ocultos=todas.filter(esDup);
+  if(ocultos.length) h+='<div class="card"><div style="font-weight:700;font-size:.85rem;">🙈 Ocultados como duplicados ('+ocultos.length+')</div>'+ocultos.slice(0,10).map(function(f){ return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #e5eaf2;font-size:.8rem;"><span><b>'+esc(f.nombre)+'</b> · '+esc(f.folio)+' · '+esc(f.estado)+'</span><button class="btn sec chico" data-rest="'+esc(f.id)+'">Restaurar</button></div>'; }).join('')+(ocultos.length>10?'<div style="font-size:.72rem;color:#64748b;">y '+(ocultos.length-10)+' más</div>':'')+'</div>';
   $('historial').innerHTML=h;
+  document.querySelectorAll('#historial [data-rest]').forEach(function(e){ e.onclick=function(){ var f=porId[e.dataset.rest]; if(!f) return; var mismos=todas.filter(function(x){ return x.folio===f.folio && esDup(x); }); guardar(mismos.map(function(b){ return {id:b.id, nota:String(b.nota||'').split('|').map(function(t){return t.trim();}).filter(function(t){ return t && t.indexOf('DUP:')!==0; }).join(' | ')}; })).then(function(){ toast('Restaurado'); }); }; });
   document.querySelectorAll('#historial [data-mes]').forEach(function(e){ e.onclick=function(){ hMes=(hMes===e.dataset.mes)?'':e.dataset.mes; hq=''; pgs.hist=0; pintarHistorial(); }; });
   document.querySelectorAll('#historial .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
   if($('h-q')) $('h-q').oninput=function(){ hq=this.value; pgs.hist=0; var v=this.value, pos=this.selectionStart; pintarHistorial(); var n=$('h-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } };
