@@ -133,6 +133,7 @@
         <select id="f-ver" style="flex:1;"><option value="">Verificados y no</option><option value="si">Solo verificados</option><option value="no">Solo sin verificar</option></select>
       </div>
       <div class="fila" style="margin-top:8px;"><select id="f-comuna" style="flex:1;"><option value="">Todas las comunas</option></select><select id="f-b2b" style="flex:1;"><option value="">Todas las marcas</option></select></div>
+      <div class="fila" style="margin-top:8px;"><button class="btn verde" id="btn-xlsx" style="flex:1;">⬇ Bajar Excel de esta lista</button></div>
     </div>
     <div id="lista"></div>
   </div>
@@ -438,14 +439,17 @@ function armarFiltros(){
 var pag=0, TOPE=12;
 ['q','f-estado','f-ver','f-comuna','f-b2b'].forEach(function(id){ $(id).addEventListener('input',function(){ pag=0; pintarLista(); }); });
 function irPag(n){ pag=n; pintarLista(); window.scrollTo(0,0); }
-function pintarLista(){
+function filtrarLista(){
   var q=norm($('q').value), fe=$('f-estado').value, fv=$('f-ver').value, fc=$('f-comuna').value, fb=$('f-b2b').value;
-  var r=filas.filter(function(f){
+  return filas.filter(function(f){
     if(fe==='pend'){ if(!pendiente(f)) return false; } else if(fe==='fisico'){ if(f.estado!=='En bodega') return false; } else if(fe==='entreg'){ if(f.estado!=='Entregado') return false; } else if(fe==='reag'){ if(!reagDe(f)||!pendiente(f)) return false; } else if(fe && f.estado!==fe) return false; if(fv && f.verificado!==fv) return false;
     if(fc && (f.comuna||'').trim()!==fc) return false; if(fb && (f.b2b||'').trim()!==fb) return false;
     if(q && (norm(f.nombre)+' '+norm(f.folio)+' '+norm(f.direccion)+' '+norm(f.qr)).indexOf(q)<0) return false;
     return true;
   });
+}
+function pintarLista(){
+  var r=filtrarLista();
   var paginas=Math.max(1,Math.ceil(r.length/TOPE)); if(pag>=paginas) pag=paginas-1; if(pag<0) pag=0;
   var ini=pag*TOPE, fin=Math.min(r.length,ini+TOPE);
   var nav = paginas>1 ? '<div class="pagnav pagfija">'+
@@ -457,6 +461,32 @@ function pintarLista(){
   document.querySelectorAll('#lista .it').forEach(function(e){ e.onclick=function(){ abrirFicha(e.dataset.id); }; });
 }
 function tarjeta(f){ return cardOps(f,{}); }
+
+// ===== Excel de lo que se ve en la Lista (una fila por ORDEN) =====
+function bajarExcel(){
+  if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; }
+  var r=filtrarLista(); if(!r.length){ toast('No hay nada en la lista para bajar'); return; }
+  var g={}, ord=[]; r.forEach(function(f){ if(!g[f.folio]){ g[f.folio]=[]; ord.push(f.folio); } g[f.folio].push(f); });
+  var filasX=ord.map(function(fo){
+    var bs=g[fo], f=bs[0], todosB=todas.filter(function(x){ return x.folio===fo && !esDup(x); });
+    var enBod=todosB.filter(function(x){ return x.estado==='En bodega'; }).length;
+    var est=bs.every(function(x){return x.estado===bs[0].estado;})?bs[0].estado:'Mixto';
+    var rg=reagDe(f);
+    return {'Comuna':(f.comuna||'').trim(),'Dirección':f.direccion||'','Cliente':f.nombre||'','Teléfono':f.telefono||'','Marca':f.b2b||'','Folio':fo,
+      'Bultos de la orden':todosB.length,'Bultos en bodega':enBod,'Estado':est,
+      'Verificado':bs.every(function(x){return x.verificado==='si';})?'Sí':(bs.some(function(x){return x.verificado==='si';})?'Parcial':'No'),
+      'Ubicación':f.ubicacion||'','Reagendado':rg?fechaTxt(rg.fecha):'','Nota':notaSinReag(f.nota||'')};
+  });
+  filasX.sort(function(a,b){ return (a['Comuna']+a['Dirección']).localeCompare(b['Comuna']+b['Dirección'],'es'); });
+  var ws=XLSX.utils.json_to_sheet(filasX);
+  ws['!cols']=[{wch:14},{wch:42},{wch:26},{wch:13},{wch:16},{wch:20},{wch:10},{wch:10},{wch:11},{wch:10},{wch:12},{wch:12},{wch:36}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Lista');
+  var fc=$('f-comuna').value, fe=$('f-estado').value;
+  var nom='inventario_'+({pend:'por_entregar',fisico:'en_bodega',entreg:'entregados',reag:'reagendados'}[fe]||'todos')+(fc?'_'+fc.replace(/[^A-Za-z0-9]+/g,'_'):'')+'_'+isoHoy()+'.xlsx';
+  XLSX.writeFile(wb,nom); toast('Excel listo: '+filasX.length+' órdenes');
+}
+$('btn-xlsx').onclick=bajarExcel;
+
 
 // ===== Ficha de un bulto =====
 function abrirModal(html){ $('hoja').innerHTML=html; $('modal').classList.add('on'); }
