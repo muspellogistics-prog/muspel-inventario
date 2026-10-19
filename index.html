@@ -85,14 +85,18 @@
   <input type="file" id="file-pend" accept=".xlsx,.xls" style="display:none;">
 </div>
 
+<div id="strip-ord" style="position:sticky;z-index:97;background:#f8fafc;border-bottom:1px solid #e5eaf2;display:flex;gap:6px;padding:6px 12px;"></div>
 <div class="wrap">
   <div id="msg"></div>
 
   <!-- RESUMEN -->
   <div id="t-resumen">
-    <div class="kpis" id="kpis"></div>
+    <div style="font-size:.78rem;font-weight:700;color:#334155;margin:2px 4px 6px;">📋 ÓRDENES (por orden nos pagan)</div>
+    <div class="kpis" id="kpis" style="grid-template-columns:repeat(3,1fr) !important;"></div>
     <div id="tarj-op"></div>
     <div id="tarj-ord"></div>
+    <div style="font-size:.78rem;font-weight:700;color:#334155;margin:10px 4px 6px;">📦 VOLUMEN EN BODEGA (bultos, solo para saber espacio)</div>
+    <div class="kpis" id="kpis-b" style="grid-template-columns:repeat(3,1fr) !important;"></div>
     <div class="card"><h3>Avance de verificación</h3><div id="avance"></div></div>
     <div id="ruta-res" style="font-size:.8rem;color:#475569;margin:0 4px 6px;"></div><div id="sync-res" style="font-size:.8rem;color:#475569;margin:0 4px 8px;"></div>
     <div class="card"><h3>Por entregar, por comuna</h3><div id="por-comuna"></div></div>
@@ -344,14 +348,28 @@ function pintarTarjOp(){
 function pintar(){
   var tot=filas.length, bod=contar(function(f){return f.estado==='En bodega';}), rut=contar(function(f){return f.estado==='En ruta';}), ent=contar(function(f){return f.estado==='Entregado';}), dev=contar(function(f){return f.estado==='Devuelto';});
   var pend=bod+rut, ver=contar(function(f){return pendiente(f)&&f.verificado==='si';});
+  var oEnt=ordenesDe(function(b){ return b.every(function(x){return x.estado==='Entregado';}) ? true : null; }).length;
+  var oBod=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En bodega';}) ? true : null; }).length;
+  var oRut=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En ruta';}) ? true : null; }).length;
+  var oPend=ordenesDe(function(b){ return b.some(function(x){return x.estado==='En bodega'||x.estado==='En ruta';}) ? true : null; }).length;
+  var oDev=ordenesDe(function(b){ return b.every(function(x){return x.estado==='Devuelto';}) ? true : null; }).length;
   $('kpis').innerHTML =
-    '<div class="kpi naranja"><b>'+pend+'</b><small>Por entregar (bultos)</small></div>'+
-    '<div class="kpi verde"><b>'+ent+'</b><small>Entregados</small></div>'+
-    '<div class="kpi"><b>'+bod+'</b><small>En bodega (físico)</small></div>'+
-    '<div class="kpi"><b>'+rut+'</b><small>En ruta</small></div>'+
-    '<div class="kpi rojo"><b>'+dev+'</b><small>Devueltos</small></div>'+
-    '<div class="kpi" style="border-color:#c4b5fd;"><b style="color:#7c3aed;">'+nOrdReag()+'</b><small>Órdenes reagendadas</small></div>'+
+    '<div class="kpi verde"><b>'+oEnt+'</b><small>Órdenes entregadas</small></div>'+
+    '<div class="kpi"><b>'+oBod+'</b><small>Órdenes en bodega</small></div>'+
+    '<div class="kpi"><b>'+oRut+'</b><small>Órdenes en ruta</small></div>'+
+    '<div class="kpi naranja"><b>'+oPend+'</b><small>Órdenes por entregar</small></div>'+
+    '<div class="kpi rojo"><b>'+oDev+'</b><small>Órdenes devueltas</small></div>'+
+    '<div class="kpi" style="border-color:#c4b5fd;"><b style="color:#7c3aed;">'+nOrdReag()+'</b><small>Órdenes reagendadas</small></div>';
+  $('kpis-b').innerHTML =
+    '<div class="kpi"><b>'+pend+'</b><small>Bultos por entregar</small></div>'+
+    '<div class="kpi"><b>'+bod+'</b><small>Bultos en bodega (físico)</small></div>'+
     '<div class="kpi"><b>'+tot+'</b><small>Total de bultos</small></div>';
+  var st=$('strip-ord');
+  if(st){
+    function caja(t,n,c){ return '<div style="flex:1;text-align:center;background:#fff;border:1px solid #e5eaf2;border-radius:8px;padding:3px 2px;"><div style="font-size:1.05rem;font-weight:800;color:'+c+';line-height:1.1;">'+n+'</div><div style="font-size:.58rem;color:#64748b;line-height:1.1;">'+t+'</div></div>'; }
+    st.innerHTML = caja('Órdenes entregadas',oEnt,'#166534')+caja('Órdenes en bodega',oBod,'#1d4ed8')+caja('Órdenes en ruta',oRut,'#b45309')+caja('Órdenes por entregar',oPend,'#c2410c');
+    var ac=$('acciones'); if(ac) st.style.top=(ac.offsetTop? (88+ac.offsetHeight) : 134)+'px';
+  }
   var pct = pend? Math.round(ver*100/pend):0;
   $('avance').innerHTML = '<div style="font-size:.85rem;">'+ver+' de '+pend+' bultos por entregar ya están verificados en físico ('+pct+'%)</div><div class="barra"><i style="width:'+pct+'%"></i></div>';
   pintarTarjOp();
@@ -651,6 +669,37 @@ function salida(auto){
   var base=$('sync-res');
   return { get textContent(){ return base.textContent; }, set textContent(v){ base.textContent=v; if(!auto) prog(v, /^(Listo|Sin cambios|No pude|El inventario ya|Se cortó)/.test(v)?20000:0); } };
 }
+// ===== Dirección corregida en la OPS (columna dirección u observación) =====
+var GEN_DIR=['CASA','DEPTO','DPTO','DEPARTAMENTO','TORRE','OFICINA','LOCAL','BLOQUE','CONDOMINIO','AV','AVDA','AVENIDA','PASAJE','PJE','CALLE','DR','DOCTOR','SN','S','N','NO','NRO','N'];
+function tituloDir(t){ var cx=['de','del','la','las','los','el','y']; return String(t||'').toLowerCase().split(/\s+/).filter(Boolean).map(function(w,i){ return (i>0&&cx.indexOf(w)>=0)?w:w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
+function calleDir(d){ var i=String(d||'').indexOf(','); return (i<0?String(d||''):String(d).slice(0,i)).trim(); }
+function restoDir(d){ var i=String(d||'').indexOf(','); return i<0?'':String(d).slice(i); }
+function numDir(s){ return /\d/.test(s) && !/S\/N/i.test(s); }
+function sinAc(t){ return norm(t).normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function claveDir(d){
+  var segs=String(d||'').split(','), seg=''; for(var i=0;i<segs.length;i++){ if(/región/i.test(segs[i])) break; if(/\d/.test(segs[i])){ seg=segs[i]; break; } }
+  if(!seg) seg=segs[0]||'';
+  return sinAc(seg).replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(function(w){ return w && GEN_DIR.indexOf(w)<0; }).sort().join(' ');
+}
+function dirCorregida(inv, ops, obs){
+  var cand=ops||'', o=String(obs||'').replace(/https?:\/\/\S+/g,' ').replace(/\s+/g,' ').trim();
+  var m=/DIRECCI[OÓ]N COMPLETA:\s*([^|]+)/i.exec(o);
+  if(m){ var a=m[1].trim().replace(/\.$/,''); cand=(a.indexOf(',')>=0)?a:(tituloDir(a)+restoDir(ops||inv)); }
+  else if(ops && !numDir(calleDir(ops))){
+    var seg=o.split('|')[0].trim().replace(/^(entregar|entrega)\s+(en\s+)?(la\s+)?(calle\s+|direcci[oó]n\s+)?/i,'');
+    var mm=/^([A-Za-zÁÉÍÓÚÜáéíóúüÑñ.'\- ]+?)\s+(\d{1,5}[A-Za-z]?)\b/.exec(seg);
+    if(mm){
+      var tk=function(t){ return sinAc(t).replace(/[^A-Z ]/g,' ').split(/\s+/).filter(function(w){ return w && GEN_DIR.indexOf(w)<0; }); };
+      var to=tk(calleDir(ops)), tn=tk(mm[1]);
+      var sub=function(x,y){ return x.length>0 && x.every(function(w){ return y.indexOf(w)>=0; }); };
+      if(sub(to,tn) || sub(tn,to)) cand=tituloDir(mm[1].trim())+' '+mm[2]+restoDir(ops).replace(new RegExp('\\s*\\('+mm[2]+'\\)\\s*$'),'');
+    }
+  }
+  cand=String(cand||'').trim(); if(!cand) return null;
+  if(numDir(calleDir(inv||'')) && !numDir(calleDir(cand)) && !/\d/.test(calleDir(cand))) return null;
+  if(claveDir(cand)===claveDir(inv||'')) return null;
+  return cand;
+}
 function sincOps(auto){
   if(busy(auto)) return;
   var ck=claveOps(); var out=salida(auto); if(!auto) out.textContent='Consultando la OPS (hoy y todo el historial)…';
@@ -696,6 +745,18 @@ function sincOps(auto){
       var base=(c0&&c0.nota!==undefined)?c0.nota:f.nota, nuevo=notaConRuta(base,txtRuta(inf)); if(nuevo===(base||'')) return;
       if(c0) c0.nota=nuevo; else { c0={id:f.id,nota:nuevo}; cambios.push(c0); idxC[f.id]=c0; } c.op++;
     });
+    // Direcciones corregidas en la OPS (dirección u observación): se actualizan solas en el inventario
+    var rOps={}; arr(res[0]).slice(1).forEach(function(r){ if(!r) return; [r[2],r[1]].forEach(function(k){ k=norm(k); if(k) rOps[k]=r; }); });
+    var nDir=0;
+    filas.forEach(function(f){
+      if(f.estado==='Entregado' || f.estado==='Devuelto') return;
+      var r=rOps[norm(f.folio)] || (f.qr && rOps[norm(f.qr)]); if(!r) return;
+      var nueva=dirCorregida(f.direccion, String(r[6]||''), String(r[20]||'')); if(!nueva) return;
+      var c0=idxC[f.id], nota=((c0&&c0.nota!==undefined)?c0.nota:f.nota)||'', tag='Dirección actualizada desde la OPS '+hoyD.slice(0,5);
+      nota=nota.split(' | ').filter(function(x){ return x && x.indexOf('Dirección actualizada desde la OPS')!==0; }).concat([tag]).join(' | ');
+      if(c0){ c0.direccion=nueva; c0.nota=nota; } else { c0={id:f.id,direccion:nueva,nota:nota}; cambios.push(c0); idxC[f.id]=c0; }
+      nDir++;
+    });
     // Órdenes que están en la OPS y todavía no existen en el inventario: se registran solas
     var existe={}; filas.forEach(function(f){ existe[norm(f.folio)]=1; if(f.qr) existe[norm(f.qr)]=1; });
     var gOps={}, ordenF=[]; arr(res[0]).slice(1).forEach(function(r){
@@ -712,7 +773,7 @@ function sincOps(auto){
       });
     });
     var nReag=reagDesdeOps(arr(res[0]),cambios);
-    var msg=(msgExtra?msgExtra+' · Luego, al sincronizar: ':'Listo. ')+'Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Con operativo anotado: '+c.op+' · Sin movimientos en la OPS: '+c.sin+'.';
+    var msg=(msgExtra?msgExtra+' · Luego, al sincronizar: ':'Listo. ')+'Pasaron a Entregado: '+c.ent+' · Devuelto: '+c.dev+' · En ruta hoy: '+c.ruta+' · Volvieron a bodega: '+c.vuelta+' · Reagendadas por Vicho/OPS: '+nReag+' · Nuevas desde la OPS: '+nNuevas+' · Direcciones corregidas desde la OPS: '+nDir+' · Con operativo anotado: '+c.op+' · Sin movimientos en la OPS: '+c.sin+'.';
     var msgX=msgExtra; msgExtra='';
     if(!cambios.length){ out.textContent=(msgX?'':'Sin cambios. ')+msg; pintar(); pintarLista(); sincBusy=false; return; }
     guardar(cambios).then(function(){ out.textContent=msg; if(nNuevas) return cargar(); pintarLista(); }).then(function(){ sincBusy=false; });
