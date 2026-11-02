@@ -75,6 +75,7 @@
   <div class="tab" data-t="faltan">Faltan</div>
   <div class="tab" data-t="calendario">Calendario</div>
   <div class="tab" data-t="historial">Historial</div>
+  <div class="tab" data-t="ops">Buscar OPS</div>
 </div>
 <div class="acciones" id="acciones">
   <button class="btn" id="btn-sync">🔄 Sincronizar OPS</button>
@@ -143,6 +144,21 @@
 
   <!-- HISTORIAL -->
   <div id="t-historial" class="oculto"><div id="historial"></div></div>
+
+  <!-- BUSCAR EN OPS -->
+  <div id="t-ops" class="oculto">
+    <div class="card">
+      <div style="font-size:.85rem;font-weight:700;margin-bottom:6px;">🔎 Historial de la OPS</div>
+      <div class="fila"><input id="ops-q" placeholder="Nombre, folio, teléfono o dirección…" style="flex:1;"><button class="btn" id="ops-buscar" style="flex:0 0 auto;">Buscar</button></div>
+      <div style="font-size:.75rem;color:#64748b;margin-top:6px;">Busca en todo el historial de la OPS (todos los meses) y en lo de hoy, aunque la orden no esté en el inventario.</div>
+    </div>
+    <div class="card">
+      <div style="font-size:.85rem;font-weight:700;margin-bottom:6px;">🧹 Limpiar el inventario con el historial</div>
+      <div style="font-size:.78rem;color:#64748b;margin-bottom:8px;">Revisa lo que figura por entregar y lo compara con la OPS: detecta las que ya están entregadas.</div>
+      <button class="btn" id="ops-revisar" style="width:100%;">Revisar lo que figura por entregar</button>
+    </div>
+    <div id="ops-res"></div>
+  </div>
 
   <!-- CALENDARIO -->
   <div id="t-calendario" class="oculto"><div id="calendario"></div></div>
@@ -237,7 +253,7 @@ function guardar(cambios){
 document.querySelectorAll('.tab').forEach(function(t){
   t.onclick=function(){
     document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');}); t.classList.add('on');
-    ['resumen','escanear','lista','faltan','calendario','historial'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
+    ['resumen','escanear','lista','faltan','calendario','historial','ops'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
     if(t.dataset.t!=='escanear') detener();
     pintar();
   };
@@ -784,6 +800,10 @@ function textoOps(f){
   var t={entregado:'Entregado',retorno:'Retorno (no se pudo entregar)',devuelto:'Devuelto a Alas',daniado:'Dañado',pendiente:'En ruta hoy'}[o.estado]||o.estado;
   return 'OPS: '+t+(o.fecha?' · '+o.fecha:'')+(o.intentos?' · '+o.intentos+' intento'+(o.intentos==1?'':'s'):'');
 }
+function notaMas(base,txt){ base=String(base||''); if(base.split(' | ').indexOf(txt)>=0) return base; return (base?base+' | ':'')+txt; }
+// La OPS avisa (mismo equipo) cuando se sube una ruta: el inventario se sincroniza al tiro
+try{ var bcInv=new BroadcastChannel('muspel_inv'); bcInv.onmessage=function(){ if(filas.length) setTimeout(function(){ sincOps(true); },1500); }; }catch(e){}
+window.addEventListener('storage',function(e){ if(e.key==='muspel_inv_nudge' && filas.length) setTimeout(function(){ sincOps(true); },1500); });
 var sincBusy=false, sincT=0;
 function busy(auto){
   if(sincBusy && Date.now()-sincT<120000){ if(!auto) prog('⏳ Todavía está trabajando la sincronización anterior. Espera unos segundos y vuelve a tocar.',5000); return true; }
@@ -879,10 +899,14 @@ function sincOps(auto){
       opsInfo[f.id]={estado:o.estado, fecha:String(o.fecha).replace('~',''), intentos:o.intentos};
       if(f.estado==='Entregado' && o.estado==='entregado' && String(o.fecha).indexOf('~')>0) c.yaEnt++;
       if(f.estado==='Entregado' || f.estado==='Devuelto') return;
-      if(o.estado==='entregado'){ cambios.push({id:f.id,estado:'Entregado'}); c.ent++; }
-      else if(o.estado==='devuelto'){ cambios.push({id:f.id,estado:'Devuelto'}); c.dev++; }
-      else if(o.estado==='pendiente' && f.estado==='En bodega'){ cambios.push({id:f.id,estado:'En ruta'}); c.ruta++; }
-      else if(o.estado==='retorno' && f.estado==='En ruta'){ cambios.push({id:f.id,estado:'En bodega'}); c.vuelta++; }
+      // Un 'pendiente' que viene del HISTORIAL (día ya cerrado, sin '~') es algo que no se entregó: queda físico en bodega
+      var diaCerrado = String(o.fecha).indexOf('~')<0, noEntregado = (o.estado==='retorno' || o.estado==='daniado' || (o.estado==='pendiente' && diaCerrado));
+      // Cada cambio deja anotado en el historial del inventario qué pasó y cuándo
+      var dd=String(o.fecha).indexOf('~')>0?hoy().slice(0,5):String(o.fecha).slice(0,5);
+      if(o.estado==='entregado'){ cambios.push({id:f.id,estado:'Entregado',nota:notaMas(f.nota,'Entregada '+dd+' · según la OPS')}); c.ent++; }
+      else if(o.estado==='devuelto'){ cambios.push({id:f.id,estado:'Devuelto',nota:notaMas(f.nota,'Devuelta a Alas '+dd)}); c.dev++; }
+      else if(o.estado==='pendiente' && !diaCerrado && f.estado==='En bodega'){ cambios.push({id:f.id,estado:'En ruta',nota:notaMas(f.nota,'Ruta '+hoyD)}); c.ruta++; }
+      else if(noEntregado && f.estado==='En ruta'){ cambios.push({id:f.id,estado:'En bodega',nota:notaMas(f.nota,'Retorno '+dd+' · para reintento')}); c.vuelta++; }
     });
     var idxC={}; cambios.forEach(function(x){ idxC[x.id]=x; });
     filas.forEach(function(f){
@@ -912,7 +936,7 @@ function sincOps(auto){
     var nNuevas=0;
     ordenF.forEach(function(fo){
       var g=gOps[fo]; g.forEach(function(r,i){
-        var e=String(r[11]||'').toLowerCase().trim(), est=e==='entregado'?'Entregado':e==='devuelto'?'Devuelto':e==='retorno'?'En bodega':'En ruta';
+        var e=String(r[11]||'').toLowerCase().trim(), est=e==='entregado'?'Entregado':e==='devuelto'?'Devuelto':(e==='retorno'||e==='daniado')?'En bodega':'En ruta';
         var bul=(i+1)+' de '+g.length;
         cambios.push({id:fo+'|'+bul, folio:fo, b2b:String(r[10]||''), nombre:String(r[4]||''), telefono:String(r[5]||''), direccion:String(r[6]||''), comuna:String(r[7]||''), bulto:bul, qr:'', estado:est, verificado:'no', nota:(opHoy[norm(fo)]?txtRuta(opHoy[norm(fo)])+' | ':'')+'Registrada desde la OPS'});
         nNuevas++;
@@ -927,6 +951,120 @@ function sincOps(auto){
   }).catch(function(){ sincBusy=false; if(!auto) out.textContent='No pude leer la OPS. Intenta de nuevo.'; });
 }
 $('btn-sync').onclick=function(){ sincOps(false); };
+
+// ===== Pestaña «Buscar en OPS»: historial de la OPS + limpieza de lo ya entregado =====
+var opsH={t:0,reg:[]}, opsQ='', opsCat='A', opsPg=0, opsRev=null;
+function sinTilde(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+function opsCargar(){
+  if(Date.now()-opsH.t<90000 && opsH.reg.length) return Promise.resolve(opsH.reg);
+  var ck=claveOps(), q=ck?('&clave='+encodeURIComponent(ck)):'', hoyD=hoy().slice(0,10);
+  return Promise.all([
+    fetch(OPS_URL+'?tipo=detalle_historico'+q).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(OPS_URL+'?tipo=ordenes'+q).then(function(r){return r.json();}).catch(function(){return null;})
+  ]).then(function(res){
+    if(!res[0] && !res[1]) throw new Error('sin datos');
+    var reg=[];
+    arr(res[0]).slice(1).forEach(function(r){ if(!r||!r[1]) return;
+      reg.push({fecha:String(r[0]||'').slice(0,10), cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nom:String(r[3]||''), dir:String(r[4]||''), comuna:String(r[5]||''), est:String(r[7]||'').toLowerCase().trim(), motivo:String(r[8]||''), b2b:String(r[9]||''), retiro:String(r[10]||'').toLowerCase().trim()==='si', tel:String(r[12]||''), obs:String(r[16]||''), rep:String(r[19]||''), hoy:false}); });
+    arr(res[1]).slice(1).forEach(function(r){ if(!r||!r[1]) return;
+      reg.push({fecha:hoyD, cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nom:String(r[4]||''), dir:String(r[6]||''), comuna:String(r[7]||''), est:String(r[11]||'').toLowerCase().trim(), motivo:String(r[22]||''), b2b:String(r[10]||''), retiro:(r[18]===true||r[18]==='TRUE'), tel:String(r[5]||''), obs:String(r[20]||''), rep:'', hoy:true}); });
+    opsH={t:Date.now(), reg:reg}; return reg;
+  });
+}
+function opsEstTxt(e){ return {entregado:'✅ Entregado',retorno:'🔁 Retorno (no se entregó)',devuelto:'↩️ Devuelto a Alas',daniado:'⚠️ Dañado',pendiente:'🚚 En ruta'}[e]||e||'—'; }
+function opsOrd(r){ return fechaOrd(r.fecha)+(r.hoy?'9':'0'); }
+function opsUlt(lista){ return lista.slice().sort(function(a,b){ var x=opsOrd(a), y=opsOrd(b); return x<y?-1:x>y?1:((PESO[a.est]||0)-(PESO[b.est]||0)); }).pop(); }
+function invDe(folio){ var k=kf(folio); return filas.filter(function(f){ return kf(f.folio)===k || (f.qr && kf(f.qr)===k); }); }
+function marcarEntregadaOps(folioInv, u, etiqueta){
+  var bs=filas.filter(function(f){ return f.folio===folioInv && pendiente(f); }); if(!bs.length) return Promise.resolve();
+  var d=(u.hoy||!u.fecha)?hoy().slice(0,5):u.fecha.slice(0,5);
+  return guardar(bs.map(function(b){ return {id:b.id, estado:'Entregado', nota:((b.nota||'')+' | Entregada '+d+' · confirmado con el historial de la OPS'+(etiqueta?' ('+etiqueta+')':'')).replace(/^ \| /,'')}; }));
+}
+function opsBuscar(){
+  var q=sinTilde(opsQ).split(/\s+/).filter(function(x){return x;}); var out=$('ops-res');
+  if(!q.length){ out.innerHTML='<div class="card" style="font-size:.85rem;color:#64748b;">Escribe un nombre, folio, teléfono o dirección.</div>'; return; }
+  out.innerHTML='<div class="card" style="font-size:.85rem;">Buscando en el historial de la OPS…</div>';
+  opsCargar().then(function(reg){
+    var g={}, orden=[];
+    reg.forEach(function(r){ var h=sinTilde([r.folio,r.cod,r.nom,r.dir,r.tel,r.b2b,r.obs].join(' ')+' '+t8(r.tel)); if(!q.every(function(t){ return h.indexOf(t)>=0; })) return;
+      var k=kf(r.folio); if(!g[k]){ g[k]=[]; orden.push(k); } g[k].push(r); });
+    orden.sort(function(a,b){ var x=opsOrd(opsUlt(g[a])), y=opsOrd(opsUlt(g[b])); return x<y?1:x>y?-1:0; });
+    var P=6, n=Math.max(1,Math.ceil(orden.length/P)); opsPg=Math.min(opsPg,n-1);
+    var pag=orden.slice(opsPg*P,opsPg*P+P);
+    var h='<div style="font-size:.8rem;color:#64748b;margin:2px 4px 6px;">'+orden.length+' orden'+(orden.length===1?'':'es')+' encontrada'+(orden.length===1?'':'s')+' en la OPS'+(orden.length>P?' · mostrando '+(opsPg*P+1)+'–'+Math.min(orden.length,opsPg*P+P):'')+'</div>';
+    if(!orden.length) h+='<div class="card">No encontré nada en el historial de la OPS con eso.</div>';
+    pag.forEach(function(k){
+      var rs=g[k].slice().sort(function(a,b){ var x=opsOrd(a), y=opsOrd(b); return x<y?1:x>y?-1:0; }), u=opsUlt(g[k]);
+      var inv=invDe(u.folio), pe=inv.filter(pendiente);
+      var invTxt=!inv.length?'<span style="color:#b91c1c;">No está en el inventario</span>':'En el inventario: <b>'+esc(inv[0].estado)+'</b> ('+inv.length+' bulto'+(inv.length===1?'':'s')+')';
+      var lin={}, hist=rs.filter(function(r){ var kk=r.fecha+'|'+r.est; if(lin[kk]) return false; lin[kk]=1; return true; }).slice(0,6).map(function(r){
+        return '<div style="font-size:.78rem;color:#475569;">'+esc(r.hoy?'Hoy':r.fecha)+' · '+opsEstTxt(r.est)+(r.rep?' · '+esc(r.rep):'')+(r.motivo?' · '+esc(r.motivo):'')+'</div>'; }).join('');
+      h+='<div class="card"><div class="n">'+esc(u.nom)+'</div><div class="d">'+esc(u.dir)+'</div><div class="m">'+esc(u.b2b)+' · '+esc(u.folio)+(u.tel?' · '+esc(u.tel):'')+'</div>'+
+         '<div style="margin-top:6px;">'+hist+'</div><div style="font-size:.8rem;margin-top:6px;">'+invTxt+'</div>'+
+         (u.est==='entregado' && pe.length?'<div class="fila" style="margin-top:8px;"><button class="btn verde chico" data-opsmarcar="'+esc(pe[0].folio)+'" data-ops-k="'+esc(k)+'">Marcar entregado en el inventario</button></div>':'')+'</div>';
+    });
+    if(orden.length>P) h+='<div class="pagnav"><button class="btn" id="ops-ant" '+(opsPg?'':'disabled')+'>← Anterior</button><span>'+(opsPg+1)+' de '+n+'</span><button class="btn" id="ops-sig" '+(opsPg>=n-1?'disabled':'')+'>Siguiente →</button></div>';
+    out.innerHTML=h;
+    var a=$('ops-ant'), s=$('ops-sig'); if(a) a.onclick=function(){ opsPg--; opsBuscar(); }; if(s) s.onclick=function(){ opsPg++; opsBuscar(); };
+    document.querySelectorAll('#ops-res [data-opsmarcar]').forEach(function(e){ e.onclick=function(){ var u=opsUlt(g[e.dataset.opsK]); marcarEntregadaOps(e.dataset.opsmarcar,u).then(function(){ toast('Marcado como entregado'); opsBuscar(); }); }; });
+  }).catch(function(){ out.innerHTML='<div class="card" style="color:#b91c1c;">No pude leer la OPS. Intenta de nuevo.</div>'; });
+}
+function difUno(a,b){ if(a===b) return true; if(Math.abs(a.length-b.length)>0 || a.length<8) return false; var d=0; for(var i=0;i<a.length;i++){ if(a[i]!==b[i] && ++d>1) return false; } return d===1; }
+function opsRevisar(){
+  var out=$('ops-res'); out.innerHTML='<div class="card" style="font-size:.85rem;">Comparando el inventario con todo el historial de la OPS…</div>';
+  opsCargar().then(function(reg){
+    var porK={}; reg.forEach(function(r){ [kf(r.folio),kf(r.cod)].forEach(function(k){ if(k){ (porK[k]=porK[k]||[]).push(r); } }); });
+    var ents=reg.filter(function(r){ return r.est==='entregado' && !r.retiro; });
+    var gF={}, ordF=[]; filas.filter(pendiente).forEach(function(f){ if(!gF[f.folio]){ gF[f.folio]=[]; ordF.push(f.folio); } gF[f.folio].push(f); });
+    var cat={A:[],B:[],C:[],D:[],E:[]};
+    ordF.forEach(function(fo){
+      var f=gF[fo][0], lst=(porK[kf(fo)]||[]).concat(f.qr?(porK[kf(f.qr)]||[]):[]);
+      var item={folio:fo, f:f, n:gF[fo].length};
+      if(lst.length){ var u=opsUlt(lst); item.u=u;
+        if(u.est==='entregado'){ cat.A.push(item); return; }
+        if(u.est==='devuelto'){ cat.B.push(item); return; } }
+      // ¿Se entregó con otro folio? (mismo nombre y mismo teléfono o misma dirección, o folio casi idéntico)
+      var nm=nnom(f.nombre), tl=t8(f.telefono), cd=claveDir(f.direccion), best=null;
+      if(nm.length>5) ents.some(function(r){ if(kf(r.folio)===kf(fo) || nnom(r.nom)!==nm) return false;
+        var igualTel=tl.length===8 && t8(r.tel)===tl, igualDir=cd && claveDir(r.dir)===cd, casi=difUno(kf(r.folio),kf(fo));
+        if(igualTel || igualDir || casi){ best={r:r, why:casi?'folio casi idéntico':igualTel?'mismo teléfono':'misma dirección'}; return true; } return false; });
+      if(best && (f.nota||'').indexOf('NOENT:'+kf(best.r.folio))<0){ item.otro=best; cat.C.push(item); return; }
+      if(lst.length) cat.D.push(item); else cat.E.push(item);
+    });
+    opsRev=cat; if(!cat[opsCat]) opsCat='A'; opsPg=0; opsRevPintar();
+  }).catch(function(){ out.innerHTML='<div class="card" style="color:#b91c1c;">No pude leer la OPS. Intenta de nuevo.</div>'; });
+}
+function opsRevPintar(){
+  var cat=opsRev, out=$('ops-res'); if(!cat) return;
+  var NOM={A:['✅ Entregadas según la OPS','Estas la OPS ya las tiene entregadas con el mismo folio.'],B:['↩️ Devueltas a Alas','La OPS las tiene devueltas a Alas.'],C:['❓ Posibles entregadas con otro folio','Mismo cliente entregado con otro folio. Tú confirmas cada una.'],D:['🔁 Siguen en bodega (retorno)','La OPS dice que NO se entregaron: siguen físicas.'],E:['📭 Sin movimientos en la OPS','Nunca pasaron por la OPS.']};
+  var h='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:4px 0 8px;">'+['A','B','C','D','E'].map(function(k){ var on=k===opsCat;
+    return '<button class="btn '+(on?'':'sec')+'" style="padding:8px 2px;font-size:.7rem;white-space:normal;line-height:1.15;" data-cat="'+k+'"><b style="font-size:1.1rem;display:block;">'+cat[k].length+'</b>'+NOM[k][0].replace(/^\S+\s/,'').split(' ').slice(0,2).join(' ')+'</button>'; }).join('')+'</div>';
+  var L=cat[opsCat], P=6, n=Math.max(1,Math.ceil(L.length/P)); opsPg=Math.min(opsPg,n-1);
+  h+='<div style="font-size:.85rem;font-weight:700;margin:2px 4px;">'+NOM[opsCat][0]+' ('+L.length+' órdenes)</div><div style="font-size:.78rem;color:#64748b;margin:0 4px 6px;">'+NOM[opsCat][1]+'</div>';
+  if(L.length && (opsCat==='A')) h+='<div class="fila" style="margin:0 0 8px;"><button class="btn verde" id="ops-todas">Marcar las '+L.length+' como entregadas en el inventario</button></div>';
+  if(!L.length) h+='<div class="card">No hay órdenes en este grupo.</div>';
+  L.slice(opsPg*P,opsPg*P+P).forEach(function(it,i){ var f=it.f, u=it.u, o=it.otro;
+    h+='<div class="card"><div class="n">'+esc(f.nombre)+'</div><div class="d">'+esc(f.direccion)+'</div><div class="m">'+esc(f.b2b)+' · '+esc(it.folio)+' · '+it.n+' bulto'+(it.n===1?'':'s')+' · '+esc(f.estado)+'</div>'+
+       (u?'<div style="font-size:.78rem;color:#475569;margin-top:4px;">OPS: '+opsEstTxt(u.est)+' · '+esc(u.hoy?'hoy':u.fecha)+(u.rep?' · '+esc(u.rep):'')+'</div>':'')+
+       (o?'<div style="font-size:.78rem;color:#b45309;margin-top:4px;">OPS entregó <b>'+esc(o.r.folio)+'</b> ('+esc(o.r.fecha)+') · '+o.why+'</div>':'')+
+       ((opsCat==='A'||opsCat==='C')?'<div class="fila" style="margin-top:8px;"><button class="btn verde chico" data-ok="'+(opsPg*P+i)+'">Marcar entregada</button>'+(opsCat==='C'?'<button class="btn sec chico" data-no="'+(opsPg*P+i)+'">No es la misma</button>':'')+'</div>':'')+'</div>'; });
+  if(L.length>P) h+='<div class="pagnav"><button class="btn" id="ops-ant" '+(opsPg?'':'disabled')+'>← Anterior</button><span>'+(opsPg+1)+' de '+n+'</span><button class="btn" id="ops-sig" '+(opsPg>=n-1?'disabled':'')+'>Siguiente →</button></div>';
+  out.innerHTML=h;
+  document.querySelectorAll('#ops-res [data-cat]').forEach(function(e){ e.onclick=function(){ opsCat=e.dataset.cat; opsPg=0; opsRevPintar(); }; });
+  var a=$('ops-ant'), s=$('ops-sig'); if(a) a.onclick=function(){ opsPg--; opsRevPintar(); }; if(s) s.onclick=function(){ opsPg++; opsRevPintar(); };
+  function quitar(it){ var i=cat[opsCat].indexOf(it); if(i>=0) cat[opsCat].splice(i,1); }
+  document.querySelectorAll('#ops-res [data-ok]').forEach(function(e){ e.onclick=function(){ var it=L[+e.dataset.ok]; if(!it) return; var u=it.u||it.otro.r;
+    marcarEntregadaOps(it.folio,u,it.otro?'folio OPS '+it.otro.r.folio:'').then(function(){ quitar(it); toast('Marcada como entregada'); opsRevPintar(); }); }; });
+  document.querySelectorAll('#ops-res [data-no]').forEach(function(e){ e.onclick=function(){ var it=L[+e.dataset.no]; if(!it||!it.otro) return; var bs=filas.filter(function(f){ return f.folio===it.folio && pendiente(f); });
+    guardar(bs.map(function(b){ return {id:b.id, nota:((b.nota||'')+' | NOENT:'+kf(it.otro.r.folio)).replace(/^ \| /,'')}; })).then(function(){ quitar(it); cat.D.push(it); toast('Listo, no se vuelve a proponer'); opsRevPintar(); }); }; });
+  if($('ops-todas')) $('ops-todas').onclick=function(){ var todasA=cat.A.slice(); if(!confirm('¿Marcar '+todasA.length+' órdenes como entregadas? La OPS ya las tiene entregadas con el mismo folio.')) return;
+    var cambios=[]; todasA.forEach(function(it){ var u=it.u, d=(u.hoy||!u.fecha)?hoy().slice(0,5):u.fecha.slice(0,5);
+      filas.filter(function(f){ return f.folio===it.folio && pendiente(f); }).forEach(function(b){ cambios.push({id:b.id, estado:'Entregado', nota:((b.nota||'')+' | Entregada '+d+' · confirmado con el historial de la OPS').replace(/^ \| /,'')}); }); });
+    guardar(cambios).then(function(){ cat.A=[]; toast(todasA.length+' órdenes marcadas como entregadas'); opsRevPintar(); }); };
+}
+$('ops-buscar').onclick=function(){ opsQ=$('ops-q').value; opsPg=0; opsBuscar(); };
+$('ops-q').addEventListener('keydown',function(e){ if(e.key==='Enter'){ opsQ=this.value; opsPg=0; opsBuscar(); } });
+$('ops-revisar').onclick=function(){ opsRevisar(); };
 
 // ===== Traer TODAS las órdenes del mes (historial cerrado + lo de hoy) =====
 function importarMes(){
@@ -996,7 +1134,9 @@ function importarMes(){
 }
 $('btn-mes').onclick=function(){ importarMes(); };
 // Cada 2 minutos, con la página abierta, revisa la OPS y registra lo nuevo
-setInterval(function(){ if(!document.hidden && filas.length) sincOps(true); },120000);
+setInterval(function(){ if(!document.hidden && filas.length) sincOps(true); },60000);
+document.addEventListener('visibilitychange',function(){ if(!document.hidden && filas.length) sincOps(true); });
+window.addEventListener('focus',function(){ if(filas.length) sincOps(true); });
 
 // ===== Cargar rutas del día (Excel de Luchín y Cristian) =====
 $('btn-ruta').onclick=function(){ if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; } $('file-ruta').click(); };
