@@ -330,6 +330,7 @@ function cardOps(f,o){
   h+='<div style="margin-top:4px;">'+badges(f,true)+'</div>';
   if(window.__posiblesById && window.__posiblesById[f.id] && pendiente(f)) h+='<div style="font-size:.74rem;color:#b45309;font-weight:700;margin-top:3px;">⚠ Posible entrega: la OPS tiene a este cliente entregado con el folio '+esc(window.__posiblesById[f.id].fo)+' ('+esc(window.__posiblesById[f.id].f)+')</div>';
   if(textoOps(f)) h+='<div style="font-size:.72rem;color:#475569;margin-top:3px;">'+esc(textoOps(f))+'</div>';
+  h+=ubicHtml(ubicDe(f.direccion,f.comuna));
   return h+'</div></div>';
 }
 function bloqueOrd(k,titulo,color,lista,notaExtra){
@@ -954,6 +955,36 @@ $('btn-sync').onclick=function(){ sincOps(false); };
 
 // ===== Pestaña «Buscar en OPS»: historial de la OPS + limpieza de lo ya entregado =====
 var opsH={t:0,reg:[]}, opsQ='', opsCat='A', opsPg=0, opsRev=null;
+// ===== Ubicaciones guardadas (links de Google Maps anotados en la observación de la OPS) =====
+function ubicClave(dir, comuna){
+  var d=String(dir||'').replace(/\([^)]*\)/g,' ').replace(/https?:\/\/\S+/g,' ');
+  var partes=d.split(',');
+  var seg=partes[0].normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  seg=seg.replace(/^(avenida|avda|av|calle|pasaje|psje|pje)\s+/,'').trim();
+  if(!seg || /(^| )s n( |$)/.test(seg)) return '';
+  if(!/\d/.test(seg) && !/^(sector|fundo|condominio|villa|loteo|poblacion|caleta|parcelacion|hijuela)\b/.test(seg)) return '';
+  var c=String(comuna||partes[1]||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+  return seg+'|'+c;
+}
+function ubicDeObs(obs){
+  var t=String(obs||'').replace(/\s+/g,' ').trim();
+  var m=/https?:\/\/(?:www\.)?(?:google\.[a-z.]+\/maps\S*|maps\.google\.[a-z.]+\S*|maps\.app\.goo\.gl\/\S+|goo\.gl\/maps\/\S+)/i.exec(t);
+  if(!m) return null;
+  return {url:m[0].replace(/[).,;]+$/,''), texto:t.length<=220?t:m[0]};
+}
+var ubicIdx=null;
+function ubicConstruir(reg){
+  var mapa={}, ord={};
+  reg.forEach(function(r){ var u=ubicDeObs(r.obs); if(!u) return; var k=ubicClave(r.dir,r.comuna); if(!k) return;
+    var o=fechaOrd(r.fecha)+(r.hoy?'9':'0'); if(!mapa[k] || o>=ord[k]){ mapa[k]={url:u.url, texto:u.texto, fecha:r.hoy?hoy().slice(0,10):r.fecha}; ord[k]=o; } });
+  ubicIdx=mapa;
+}
+function ubicDe(dir,comuna){ if(!ubicIdx) return null; var k=ubicClave(dir,comuna); return k?(ubicIdx[k]||null):null; }
+function ubicHtml(u){
+  if(!u) return '';
+  return '<div style="font-size:.78rem;margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:6px 8px;">📍 <b>Ubicación guardada</b> ('+esc(u.fecha)+') · <a href="'+esc(u.url)+'" target="_blank" rel="noopener" style="font-weight:700;">Abrir en el mapa</a></div>';
+}
+
 function sinTilde(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
 function opsCargar(){
   if(Date.now()-opsH.t<90000 && opsH.reg.length) return Promise.resolve(opsH.reg);
@@ -968,7 +999,7 @@ function opsCargar(){
       reg.push({fecha:String(r[0]||'').slice(0,10), cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nom:String(r[3]||''), dir:String(r[4]||''), comuna:String(r[5]||''), est:String(r[7]||'').toLowerCase().trim(), motivo:String(r[8]||''), b2b:String(r[9]||''), retiro:String(r[10]||'').toLowerCase().trim()==='si', tel:String(r[12]||''), obs:String(r[16]||''), rep:String(r[19]||''), hoy:false}); });
     arr(res[1]).slice(1).forEach(function(r){ if(!r||!r[1]) return;
       reg.push({fecha:hoyD, cod:String(r[1]), folio:String(r[2]||r[1]).trim(), nom:String(r[4]||''), dir:String(r[6]||''), comuna:String(r[7]||''), est:String(r[11]||'').toLowerCase().trim(), motivo:String(r[22]||''), b2b:String(r[10]||''), retiro:(r[18]===true||r[18]==='TRUE'), tel:String(r[5]||''), obs:String(r[20]||''), rep:'', hoy:true}); });
-    opsH={t:Date.now(), reg:reg}; return reg;
+    opsH={t:Date.now(), reg:reg}; ubicConstruir(reg); return reg;
   });
 }
 function opsEstTxt(e){ return {entregado:'✅ Entregado',retorno:'🔁 Retorno (no se entregó)',devuelto:'↩️ Devuelto a Alas',daniado:'⚠️ Dañado',pendiente:'🚚 En ruta'}[e]||e||'—'; }
@@ -1000,7 +1031,7 @@ function opsBuscar(){
       var lin={}, hist=rs.filter(function(r){ var kk=r.fecha+'|'+r.est; if(lin[kk]) return false; lin[kk]=1; return true; }).slice(0,6).map(function(r){
         return '<div style="font-size:.78rem;color:#475569;">'+esc(r.hoy?'Hoy':r.fecha)+' · '+opsEstTxt(r.est)+(r.rep?' · '+esc(r.rep):'')+(r.motivo?' · '+esc(r.motivo):'')+'</div>'; }).join('');
       h+='<div class="card"><div class="n">'+esc(u.nom)+'</div><div class="d">'+esc(u.dir)+'</div><div class="m">'+esc(u.b2b)+' · '+esc(u.folio)+(u.tel?' · '+esc(u.tel):'')+'</div>'+
-         '<div style="margin-top:6px;">'+hist+'</div><div style="font-size:.8rem;margin-top:6px;">'+invTxt+'</div>'+
+         '<div style="margin-top:6px;">'+hist+'</div>'+ubicHtml(ubicDe(u.dir,u.comuna))+'<div style="font-size:.8rem;margin-top:6px;">'+invTxt+'</div>'+
          (u.est==='entregado' && pe.length?'<div class="fila" style="margin-top:8px;"><button class="btn verde chico" data-opsmarcar="'+esc(pe[0].folio)+'" data-ops-k="'+esc(k)+'">Marcar entregado en el inventario</button></div>':'')+'</div>';
     });
     if(orden.length>P) h+='<div class="pagnav"><button class="btn" id="ops-ant" '+(opsPg?'':'disabled')+'>← Anterior</button><span>'+(opsPg+1)+' de '+n+'</span><button class="btn" id="ops-sig" '+(opsPg>=n-1?'disabled':'')+'>Siguiente →</button></div>';
@@ -1292,6 +1323,9 @@ $('btn-captura').onclick=function(){
 
 $('f-estado').value='pend';
 cargar().then(function(){ sincOps(true); });
+// Ubicaciones guardadas: se leen del historial de la OPS (en segundo plano) para mostrarlas en las tarjetas
+function ubicRefrescar(){ opsH.t=0; opsCargar().then(function(){ if(filas.length) pintar(); }).catch(function(){}); }
+setTimeout(ubicRefrescar,5000); setInterval(ubicRefrescar,600000);
 </script>
 </body>
 </html>
