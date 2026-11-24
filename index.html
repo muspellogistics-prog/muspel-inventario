@@ -76,6 +76,7 @@
   <div class="tab" data-t="calendario">Calendario</div>
   <div class="tab" data-t="historial">Historial</div>
   <div class="tab" data-t="ops">Buscar OPS</div>
+  <div class="tab" data-t="tl" style="color:#e6c45a;">TL</div>
 </div>
 <div class="acciones" id="acciones">
   <button class="btn" id="btn-sync">🔄 Sincronizar OPS</button>
@@ -143,6 +144,18 @@
   <div id="t-faltan" class="oculto"><div id="faltan"></div></div>
 
   <!-- HISTORIAL -->
+  <!-- TL: CLIENTES PROPIOS (AGREGADO 24-11-2026) -->
+  <div id="t-tl" class="oculto">
+    <div id="tl-aviso" class="aviso oculto"></div>
+    <div style="font-size:.78rem;font-weight:700;color:#8a6508;margin:2px 4px 6px;">🟡 CLIENTES PROPIOS (TL) · se cuentan por orden, 1 caja = 1 orden</div>
+    <div class="kpis" id="tl-kpis" style="grid-template-columns:repeat(3,1fr) !important;"></div>
+    <div class="card" style="border-color:#e5d28f;background:#fbf3d6;"><div class="fila" id="tl-hoy" style="font-size:.8rem;color:#7c4a03;"></div></div>
+    <div class="fila" style="margin-bottom:8px;"><select id="tl-f-estado" style="flex:1;"><option value="act">Pendientes (bodega + ruta)</option><option value="bod">En bodega</option><option value="rut">En ruta</option><option value="ent">Entregadas</option><option value="mal">Dañadas / devueltas</option><option value="">Todas</option></select><select id="tl-f-cli" style="flex:1;"><option value="">Todos los clientes</option></select><button class="btn sec chico" id="tl-recargar">🔄</button></div>
+    <div id="tl-lista"></div>
+    <div class="fila" style="justify-content:space-between;margin-top:6px;"><button class="btn sec chico" id="tl-ant">◀</button><span id="tl-pag" style="font-size:.78rem;color:#64748b;"></span><button class="btn sec chico" id="tl-sig">▶</button></div>
+    <div class="aviso" style="margin-top:10px;">Aquí solo se mira. Los cambios de estado (retirada, en ruta, entregada, retorno) se hacen en la OPS, pestaña TL, y se reflejan aquí al actualizar.</div>
+  </div>
+
   <div id="t-historial" class="oculto"><div id="historial"></div></div>
 
   <!-- BUSCAR EN OPS -->
@@ -253,8 +266,9 @@ function guardar(cambios){
 document.querySelectorAll('.tab').forEach(function(t){
   t.onclick=function(){
     document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');}); t.classList.add('on');
-    ['resumen','escanear','lista','faltan','calendario','historial','ops'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
+    ['resumen','escanear','lista','faltan','calendario','historial','ops','tl'].forEach(function(n){ $('t-'+n).classList.toggle('oculto', n!==t.dataset.t); });
     if(t.dataset.t!=='escanear') detener();
+    if(t.dataset.t==='tl'){ tlInvAbrir(); return; }
     pintar();
   };
 });
@@ -1326,6 +1340,77 @@ cargar().then(function(){ sincOps(true); });
 // Ubicaciones guardadas: se leen del historial de la OPS (en segundo plano) para mostrarlas en las tarjetas
 function ubicRefrescar(){ opsH.t=0; opsCargar().then(function(){ if(filas.length) pintar(); }).catch(function(){}); }
 setTimeout(ubicRefrescar,5000); setInterval(ubicRefrescar,600000);
+
+// ===== TL: clientes propios (AGREGADO 24-11-2026) =====
+// Lee el Sheets de TL con la misma conexión de la OPS (tl_url y tl_clave guardadas en este navegador).
+var tlInvO = [], tlInvPag = 0, TL_INV_POR_PAG = 8;
+function tlInvEsc(x){ return String(x==null?'':x).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function tlInvGrupo(o){ var e=String(o.estado||'').trim(); if(e==='en_ruta') return 'rut'; if(e==='entregado') return 'ent'; if(e==='daniado'||e==='devuelto') return 'mal'; return 'bod'; }
+function tlInvHoy(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function tlInvFechaCorta(f){ var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(f||'')); return m?(m[3]+'-'+m[2]):''; }
+function tlInvAviso(msg){ var b=$('tl-aviso'); if(!b) return; if(msg){ b.classList.remove('oculto'); b.innerHTML=msg; } else { b.classList.add('oculto'); } }
+function tlInvAbrir(){ tlInvPintar(); tlInvCargar(); }
+function tlInvCargar(){
+  var url='', cl='';
+  try{ url=localStorage.getItem('tl_url')||''; cl=localStorage.getItem('tl_clave')||''; }catch(e){}
+  if(!url||!cl){
+    try{ tlInvO=JSON.parse(localStorage.getItem('tl_cache')||'[]')||[]; }catch(e){ tlInvO=[]; }
+    tlInvAviso('⚙️ Este navegador aún no tiene la conexión con el Sheets de TL. Ábrela una vez desde la OPS (pestaña TL) y vuelve aquí.'+(tlInvO.length?' Mientras tanto muestro lo último guardado.':''));
+    tlInvPintar(); return;
+  }
+  fetch(url+'?tipo=tl&clave='+encodeURIComponent(cl)).then(function(r){return r.json();}).then(function(j){
+    if(!j||!j.ok) throw new Error((j&&j.error)||'error');
+    tlInvO=j.ordenes||[]; try{ localStorage.setItem('tl_cache', JSON.stringify(tlInvO)); }catch(e){}
+    tlInvAviso(''); tlInvPintar();
+  }).catch(function(e){
+    try{ tlInvO=JSON.parse(localStorage.getItem('tl_cache')||'[]')||[]; }catch(x){ tlInvO=[]; }
+    tlInvAviso('📡 No pude leer el Sheets de TL ahora ('+tlInvEsc(e.message)+'). Muestro lo último guardado.'); tlInvPintar();
+  });
+}
+function tlInvVisibles(){
+  var fe=$('tl-f-estado').value, fc=$('tl-f-cli').value;
+  return tlInvO.filter(function(o){
+    var g=tlInvGrupo(o);
+    if(fc && (o.cliente||'')!==fc) return false;
+    if(fe==='act') return g==='bod'||g==='rut';
+    return !fe || g===fe;
+  }).sort(function(a,b){ return String(b.fecha_retiro||'').localeCompare(String(a.fecha_retiro||'')) || String(a.id).localeCompare(String(b.id)); });
+}
+function tlInvPintar(){
+  var O=tlInvO, hoy=tlInvHoy(), mes=hoy.slice(0,7);
+  var c={bod:0,rut:0,ent:0,mal:0}, recMes=0, entMes=0, recHoy=0, entHoy=0, rutHoy=0;
+  O.forEach(function(o){
+    var g=tlInvGrupo(o); c[g]++;
+    if(String(o.fecha_retiro||'').slice(0,7)===mes) recMes++;
+    if(g==='ent' && String(o.fecha_entrega||'').slice(0,7)===mes) entMes++;
+    if(String(o.fecha_retiro||'').slice(0,10)===hoy) recHoy++;
+    if(g==='ent' && String(o.fecha_entrega||'').slice(0,10)===hoy) entHoy++;
+    if(g==='rut') rutHoy++;
+  });
+  var k=function(cl,n,l){ return '<div class="kpi '+cl+'"><b>'+n+'</b><small>'+l+'</small></div>'; };
+  $('tl-kpis').innerHTML = k('',recMes,'Retiradas este mes')+k('naranja',c.bod,'En bodega')+k('naranja',c.rut,'En ruta')+k('verde',entMes,'Entregadas este mes')+k('rojo',c.mal,'Dañadas / devueltas')+k('',O.length,'Total histórico');
+  $('tl-hoy').innerHTML = '<span>📥 Hoy retiradas: <b>'+recHoy+'</b></span><span>🚐 En ruta ahora: <b>'+rutHoy+'</b></span><span>✅ Hoy entregadas: <b>'+entHoy+'</b></span>';
+  // clientes
+  var sel=$('tl-f-cli'), cur=sel.value, set={}; O.forEach(function(o){ if(o.cliente) set[o.cliente]=1; });
+  sel.innerHTML='<option value="">Todos los clientes</option>'+Object.keys(set).sort().map(function(n){ return '<option'+(n===cur?' selected':'')+'>'+tlInvEsc(n)+'</option>'; }).join('');
+  // lista paginada
+  var V=tlInvVisibles(), tot=V.length, pags=Math.max(1,Math.ceil(tot/TL_INV_POR_PAG));
+  if(tlInvPag>pags-1) tlInvPag=pags-1; if(tlInvPag<0) tlInvPag=0;
+  var pag=V.slice(tlInvPag*TL_INV_POR_PAG,(tlInvPag+1)*TL_INV_POR_PAG);
+  var ETQ={bod:['En bodega','bod'],rut:['En ruta','rut'],ent:['Entregada','ent'],mal:['Dañada / devuelta','dev']};
+  $('tl-lista').innerHTML = pag.length ? pag.map(function(o){
+    var g=tlInvGrupo(o), e=ETQ[g], ret=(String(o.estado)==='retorno'||String(o.estado)==='no_entregado');
+    return '<div class="pq" style="border-left-color:#b8860b;"><div class="pq-i"><div class="pq-n">'+tlInvEsc(o.cliente||'')+' · '+tlInvEsc(o.n_pedido||o.id)+' <span class="b '+e[1]+'">'+e[0]+(ret?' (retorno)':'')+'</span></div>'+
+      '<div class="pq-d">'+tlInvEsc(o.destinatario||'')+' · '+tlInvEsc(o.comuna||'')+' · talla '+tlInvEsc(o.talla||'S')+'</div>'+
+      '<div class="pq-c">retiro '+tlInvFechaCorta(o.fecha_retiro)+(o.fecha_entrega?' · entrega '+tlInvFechaCorta(o.fecha_entrega):'')+(o.motivo?' · '+tlInvEsc(o.motivo):'')+'</div></div></div>';
+  }).join('') : '<div class="aviso">No hay órdenes TL con este filtro.</div>';
+  $('tl-pag').textContent = 'Página '+(tlInvPag+1)+' de '+pags+' · '+tot+' órdenes';
+}
+$('tl-f-estado').addEventListener('input',function(){ tlInvPag=0; tlInvPintar(); });
+$('tl-f-cli').addEventListener('input',function(){ tlInvPag=0; tlInvPintar(); });
+$('tl-ant').addEventListener('click',function(){ tlInvPag--; tlInvPintar(); });
+$('tl-sig').addEventListener('click',function(){ tlInvPag++; tlInvPintar(); });
+$('tl-recargar').addEventListener('click',function(){ tlInvCargar(); });
 </script>
 </body>
 </html>
