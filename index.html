@@ -83,9 +83,11 @@
   <button class="btn sec" id="btn-ruta">🚚 Cargar rutas</button>
   <button class="btn sec" id="btn-mes">📥 Traer el mes</button>
   <button class="btn sec" id="btn-pend">📋 Cargar pendientes</button>
+  <button class="btn sec" id="btn-liq">🧾 Cruzar con liquidación ALAS</button>
   <button class="btn sec mini" id="btn-recargar" title="Recargar">⟳</button>
   <input type="file" id="file-ruta" accept=".xlsx,.xls" multiple style="display:none;">
   <input type="file" id="file-pend" accept=".xlsx,.xls" style="display:none;">
+  <input type="file" id="file-liq" accept=".xlsx,.xls" style="display:none;">
 </div>
 
 <div id="strip-ord" style="position:sticky;z-index:97;background:#f8fafc;border-bottom:1px solid #e5eaf2;display:flex;gap:6px;padding:6px 12px;"></div>
@@ -1241,6 +1243,58 @@ $('file-ruta').onchange=function(){
     out.textContent='Guardando…';
     guardar(cambios).then(function(){ out.textContent='Listo. En ruta → '+det+extra+'.'; pintar(); });
   }).catch(function(e){ out.textContent='No pude leer el Excel: '+(e&&e.message||e); });
+};
+
+// ===== Cruzar con la liquidación de ALAS (limpia lo que quedó «En bodega» por error) =====
+// Todo se lee y se calcula en este teléfono: el Excel de ALAS no se sube a ningún lado.
+function kfl(s){ return kf(String(s==null?'':s).trim().replace(/\.0$/,'').replace(/-F\d+$/i,'')); }
+$('btn-liq').onclick=function(){ if(typeof XLSX==='undefined'){ toast('No cargó el lector de Excel. Revisa tu internet y recarga.'); return; } $('file-liq').click(); };
+$('file-liq').onchange=function(){
+  var file=(this.files||[])[0]; this.value=''; if(!file) return;
+  var out=$('ruta-res'); out.textContent='Leyendo la liquidación de ALAS…';
+  var fr=new FileReader();
+  fr.onerror=function(){ out.textContent='No pude leer ese archivo.'; };
+  fr.onload=function(){
+    try{
+      var wb=XLSX.read(new Uint8Array(fr.result),{type:'array',cellDates:true});
+      var alas={}, nLiq=0;
+      wb.SheetNames.forEach(function(sn){
+        if(norm(sn).indexOf('DETALLE')!==0) return;
+        var data=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}), h=-1, ix={};
+        for(var i=0;i<Math.min(data.length,10);i++){ if(data[i].some(function(c){return norm(c)==='FOLIO';})){ h=i; data[i].forEach(function(c,j){ ix[norm(c).replace(/\s+/g,' ')]=j; }); break; } }
+        if(h<0 || ix['ESTADO']===undefined) return;
+        for(var r=h+1;r<data.length;r++){
+          var row=data[r], fo=row[ix['FOLIO']]; if(fo===''||fo==null) continue;
+          var est=norm(row[ix['ESTADO']]), b2b=norm(row[ix['B2B']]), fe=row[ix['FECHA ENTREGA']], ff='';
+          if(fe instanceof Date && !isNaN(fe)){ ff=('0'+fe.getDate()).slice(-2)+'-'+('0'+(fe.getMonth()+1)).slice(-2); }
+          var tipo = est.indexOf('ENTREGADA')===0 ? 'ENT' : (est.indexOf('RECHAZADO')>=0 || est.indexOf('NO ENTREGADA')>=0) ? 'RECH' : 'OTRO';
+          alas[kfl(fo)]={tipo:tipo, wom:b2b.indexOf('WOM')===0, fecha:ff, est:est}; nLiq++;
+        }
+      });
+      if(!nLiq){ out.textContent='No encontré las pestañas «Detalle…» con folios y estado en ese Excel. ¿Es la liquidación de ALAS?'; return; }
+      var cambios=[], cEnt=0, cDev=0, sinLiq=0, revisar=0, ejEnt=[], ejDev=[], ordEnt={}, ordDev={};
+      filas.forEach(function(f){
+        if(f.estado!=='En bodega') return;
+        var a=alas[kfl(f.folio)];
+        if(!a){ sinLiq++; return; }
+        var base=(f.nota||'').trim(), sep=base?base+' | ':'';
+        if(a.tipo==='ENT'){
+          cambios.push({id:f.id,estado:'Entregado',nota:sep+'Entregada según liquidación ALAS'+(a.fecha?' '+a.fecha:'')});
+          cEnt++; ordEnt[kfl(f.folio)]=1; if(ejEnt.length<5) ejEnt.push(f.folio);
+        } else if(a.tipo==='RECH' && (a.wom || norm(f.b2b).indexOf('WOM')===0)){
+          cambios.push({id:f.id,estado:'Devuelto',nota:sep+'Devuelta a Alas (WOM rechazada/no entregada) según liquidación'});
+          cDev++; ordDev[kfl(f.folio)]=1; if(ejDev.length<3) ejDev.push(f.folio);
+        } else { revisar++; }
+      });
+      var nE=Object.keys(ordEnt).length, nD=Object.keys(ordDev).length;
+      var det='Pasan a ENTREGADO: '+nE+' órdenes (ALAS las paga como entregadas'+(ejEnt.length?', ej. '+ejEnt.join(', '):'')+')\nPasan a DEVUELTO A ALAS: '+nD+' órdenes WOM (rechazadas o no entregadas'+(ejDev.length?', ej. '+ejDev.join(', '):'')+')\nSe quedan como están: '+(sinLiq+revisar)+' (no salen en esa liquidación o necesitan revisión tuya)';
+      if(!cambios.length){ out.textContent='No hay nada que cambiar. '+det.replace(/\n/g,' · '); return; }
+      if(!confirm(det+'\n\n¿Confirmas?')){ out.textContent='Cancelado, no se cambió nada.'; return; }
+      out.textContent='Guardando…';
+      guardar(cambios).then(function(){ out.textContent='Listo. Entregadas: '+nE+' · Devueltas a Alas (WOM): '+nD+' · Sin cambio: '+(sinLiq+revisar)+'.'; pintar(); });
+    }catch(e){ out.textContent='No pude leer el Excel: '+(e&&e.message||e); }
+  };
+  fr.readAsArrayBuffer(file);
 };
 
 // ===== Cargar pendientes desde el Excel de ruta (pestañas «Priori…» y «J05 y J06») =====
